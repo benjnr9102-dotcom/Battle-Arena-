@@ -1,0 +1,6 @@
+{
+  "name": "BATTLE ARENA",
+  "description": "Application web mobile PWA e-sport de jeux compétitifs (Échecs, Tap Race) avec défis et jetons virtuels.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
