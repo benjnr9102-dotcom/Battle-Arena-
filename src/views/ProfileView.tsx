@@ -1,27 +1,47 @@
 import React, { useState } from 'react';
-import { Award, RotateCcw, Check, Edit2, Zap, Swords, Trophy, Camera, LogOut, Loader2, AlertCircle } from 'lucide-react';
+import {
+  Award,
+  RotateCcw,
+  Check,
+  Edit2,
+  Zap,
+  Swords,
+  Trophy,
+  Camera,
+  LogOut,
+  Loader2,
+  AlertCircle,
+  KeyRound,
+  ShieldCheck,
+  Mail,
+} from 'lucide-react';
 import { UserProfile } from '../types';
 import { resizeImageTo128Jpeg } from '../utils/imageResize';
 
 interface ProfileViewProps {
   userProfile: UserProfile;
+  userEmail?: string;
   onUpdateUsername: (newName: string) => Promise<void> | void;
   onUpdatePhoto: (photoDataUrl: string) => Promise<void> | void;
   onResetTokens: () => Promise<void> | void;
+  onChangePassword: () => Promise<void>;
   onSignOut: () => Promise<void> | void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   userProfile,
+  userEmail,
   onUpdateUsername,
   onUpdatePhoto,
   onResetTokens,
+  onChangePassword,
   onSignOut,
 }) => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [usernameInput, setUsernameInput] = useState<string>(userProfile.username);
   const [showSavedToast, setShowSavedToast] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const handleSaveName = async () => {
@@ -60,9 +80,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
+  // Requirement 6: Bouton "Changer mon mot de passe"
+  const handlePasswordChangeRequest = async () => {
+    setIsResettingPassword(true);
+    setErrorMessage('');
+    try {
+      await onChangePassword();
+      triggerToast('E-mail de réinitialisation envoyé ! Vérifiez votre boîte de réception.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Impossible d’envoyer l’e-mail de réinitialisation.');
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   const triggerToast = (msg: string) => {
     setShowSavedToast(msg);
-    setTimeout(() => setShowSavedToast(null), 2500);
+    setTimeout(() => setShowSavedToast(null), 3000);
   };
 
   const winRate =
@@ -159,8 +193,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <h3 className="font-display font-black text-lg text-white truncate">
                     {userProfile.username}
                   </h3>
-                  <span className="text-[11px] text-cyan-400 font-semibold block">
-                    Joueur Authentifié Firebase
+                  <span className="text-[11px] text-cyan-400 font-semibold block truncate">
+                    {userEmail || 'Joueur Authentifié'}
                   </span>
                 </div>
                 <button
@@ -279,8 +313,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
+      {/* Account Security Section */}
+      <div className="bg-[#131b2e] border border-slate-700/80 rounded-2xl p-3.5 space-y-3">
+        <div className="flex items-center gap-2 text-cyan-400 font-display font-bold text-sm">
+          <ShieldCheck className="w-4 h-4" />
+          <span>Sécurité du compte</span>
+        </div>
+
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          Pour modifier votre mot de passe, un e-mail officiel de réinitialisation sécurisé sera envoyé à l'adresse associée à ce compte (<strong>{userEmail}</strong>).
+        </p>
+
+        {/* Requirement 6: Bouton "Changer mon mot de passe" */}
+        <button
+          onClick={handlePasswordChangeRequest}
+          disabled={isResettingPassword}
+          className="w-full py-2.5 px-3 rounded-xl text-xs font-display font-bold text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-800/80 shadow flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-50"
+        >
+          {isResettingPassword ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <KeyRound className="w-3.5 h-3.5" />
+          )}
+          <span>Changer mon mot de passe</span>
+        </button>
+      </div>
+
       {/* Disconnection button */}
-      <div className="pt-2">
+      <div className="pt-1">
         <button
           onClick={onSignOut}
           className="w-full py-3 rounded-xl text-xs font-display font-bold uppercase tracking-wider text-red-400 hover:text-white bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 shadow-md flex items-center justify-center gap-2 transition active:scale-98"

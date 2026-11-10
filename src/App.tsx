@@ -4,7 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signOut,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  User,
+} from 'firebase/auth';
 import { doc, onSnapshot, collection, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
@@ -26,7 +32,7 @@ import { TapRaceGame } from './games/TapRaceGame';
 import { StorageService } from './services/storage';
 import { UserProfile, Opponent, MatchRecord, GameType } from './types';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import { Swords, Loader2 } from 'lucide-react';
+import { Swords, Loader2, Mail, RefreshCw, Send, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const isOnline = useOnlineStatus();
@@ -34,6 +40,9 @@ export default function App() {
   // Firebase Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [isEmailVerified, setIsEmailVerified] = useState<boolean>(false);
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
+  const [resendSuccess, setResendSuccess] = useState<boolean>(false);
 
   // App Navigation & User State
   const [currentTab, setCurrentTab] = useState<NavTab>('arena');
@@ -67,11 +76,28 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      setIsEmailVerified(!!user?.emailVerified);
       setAuthLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Cooldown countdown timer for email resend (limited to once per 60 seconds)
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // 2. Real-time Firestore synchronization for currentUser document (users/{uid})
   useEffect(() => {
@@ -148,6 +174,34 @@ export default function App() {
 
     return () => unsubscribe();
   }, [currentUser]);
+
+  // Requirement 4: Resend verification email with 60s cooldown limit
+  const handleResendVerificationEmail = async () => {
+    if (!currentUser || resendCooldown > 0) return;
+
+    try {
+      await sendEmailVerification(currentUser);
+      setResendCooldown(60);
+      setResendSuccess(true);
+      setTimeout(() => setResendSuccess(false), 5000);
+    } catch (err) {
+      console.error('Erreur renvoi e-mail de vérification:', err);
+      alert('Impossible d’envoyer l’e-mail de vérification pour le moment.');
+    }
+  };
+
+  // Reload user status to refresh emailVerified
+  const handleCheckEmailVerified = async () => {
+    if (!currentUser) return;
+    try {
+      await currentUser.reload();
+      if (auth.currentUser) {
+        setIsEmailVerified(auth.currentUser.emailVerified);
+      }
+    } catch (err) {
+      console.warn('Erreur actualisation statut e-mail:', err);
+    }
+  };
 
   // Challenge Flow Step 1: Open Confirmation Modal
   const handleOpenChallenge = (opponent: Opponent, gameType: GameType) => {
@@ -287,6 +341,14 @@ export default function App() {
     });
   };
 
+  // Requirement 6: Changer mon mot de passe via e-mail de réinitialisation
+  const handleChangePassword = async () => {
+    if (!currentUser?.email) {
+      throw new Error('Adresse e-mail du compte introuvable.');
+    }
+    await sendPasswordResetEmail(auth, currentUser.email);
+  };
+
   // Déconnexion
   const handleSignOut = async () => {
     try {
@@ -312,7 +374,7 @@ export default function App() {
     );
   }
 
-  // Not authenticated: render Auth View (Inscription / Connexion)
+  // Not authenticated: render Auth View (Inscription / Connexion / Mot de passe oublié)
   if (!currentUser) {
     return <AuthView />;
   }
@@ -324,6 +386,45 @@ export default function App() {
         <div className="bg-amber-600/90 text-white text-xs font-semibold px-3 py-1.5 text-center flex items-center justify-center gap-1.5 sticky top-0 z-50">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
           <span>Mode Hors-ligne actif · Vos scores et parties sont mis en cache localement (PWA).</span>
+        </div>
+      )}
+
+      {/* Requirement 4: Email Verification Banner (non-blocking) */}
+      {!isEmailVerified && (
+        <div className="bg-gradient-to-r from-blue-950 via-cyan-950 to-blue-950 border-b border-cyan-500/40 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2 sticky top-0 z-45">
+          <div className="flex items-center gap-2 text-slate-200 min-w-0">
+            <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span className="truncate">
+              <strong>Vérifie ton e-mail :</strong> Un lien de confirmation a été envoyé à <em>{currentUser.email}</em>.
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {resendSuccess && (
+              <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Envoyé !
+              </span>
+            )}
+
+            <button
+              onClick={handleResendVerificationEmail}
+              disabled={resendCooldown > 0}
+              className="px-2.5 py-1 rounded-lg text-[11px] font-display font-bold bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+              title="Renvoyer l'e-mail de vérification (1 fois par minute)"
+            >
+              <Send className="w-3 h-3" />
+              <span>{resendCooldown > 0 ? `Renvoyer (${resendCooldown}s)` : "Renvoyer l'e-mail"}</span>
+            </button>
+
+            <button
+              onClick={handleCheckEmailVerified}
+              className="p-1 rounded-lg text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 transition"
+              title="Vérifier si l'e-mail a été validé"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -388,9 +489,11 @@ export default function App() {
             {currentTab === 'profile' && (
               <ProfileView
                 userProfile={userProfile}
+                userEmail={currentUser.email || undefined}
                 onUpdateUsername={handleUpdateUsername}
                 onUpdatePhoto={handleUpdatePhoto}
                 onResetTokens={handleResetTokens}
+                onChangePassword={handleChangePassword}
                 onSignOut={handleSignOut}
               />
             )}

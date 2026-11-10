@@ -23,23 +23,30 @@ export function getFirebaseAuthErrorMessage(errorCode: string): string {
     case 'auth/invalid-email':
       return 'Format d’adresse e-mail invalide.';
     case 'auth/user-disabled':
-      return 'Ce compte joueur a été désactivé.';
+      return 'Ce compte joueur a été désactivé par l’administrateur.';
     case 'auth/user-not-found':
       return 'Aucun compte associé à cette adresse e-mail.';
     case 'auth/wrong-password':
     case 'auth/invalid-credential':
-      return 'Identifiants incorrects. Vérifiez votre e-mail et mot de passe.';
+    case 'auth/invalid-login-credentials':
+      return 'Identifiants incorrects. Vérifiez votre adresse e-mail et votre mot de passe.';
     case 'auth/email-already-in-use':
       return 'Cette adresse e-mail est déjà utilisée par un autre joueur.';
     case 'auth/weak-password':
-      return 'Le mot de passe doit comporter au moins 6 caractères.';
+      return 'Le mot de passe doit comporter au moins 8 caractères avec lettres, chiffres et caractères spéciaux.';
+    case 'auth/missing-password':
+      return 'Veuillez saisir votre mot de passe.';
+    case 'auth/missing-email':
+      return 'Veuillez saisir votre adresse e-mail.';
     case 'auth/too-many-requests':
-      return 'Trop de tentatives infructueuses. Veuillez patienter avant de réessayer.';
+      return 'Trop de tentatives infructueuses consécutives. Votre accès est temporairement bloqué pour des raisons de sécurité. Veuillez patienter avant de réessayer.';
     case 'auth/network-request-failed':
-      return 'Erreur de connexion réseau. Vérifiez votre accès internet.';
+      return 'Erreur de connexion au serveur. Vérifiez votre connexion internet.';
+    case 'auth/requires-recent-login':
+      return 'Cette opération sensible nécessite une reconnexion récente.';
     case 'auth/popup-closed-by-user':
-      return 'La fenêtre de connexion a été fermée.';
+      return 'La fenêtre de connexion a été fermée avant la fin de l’opération.';
     default:
-      return 'Une erreur est survenue lors de l’authentification. Veuillez réessayer.';
+      return 'Une erreur de sécurité est survenue. Veuillez vérifier vos informations et réessayer.';
   }
 }
