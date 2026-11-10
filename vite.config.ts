@@ -1,13 +1,29 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig} from 'vite';
-import {VitePWA} from 'vite-plugin-pwa';
+import { defineConfig, Plugin } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
+
+// Plugin to automatically redirect root / to /Battle-Arena-/ in dev mode
+const baseRedirectPlugin = (): Plugin => ({
+  name: 'base-redirect-plugin',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      if (req.url === '/' || req.url === '') {
+        res.writeHead(302, { Location: '/Battle-Arena-/' });
+        res.end();
+        return;
+      }
+      next();
+    });
+  },
+});
 
 export default defineConfig(() => {
   return {
     base: '/Battle-Arena-/',
     plugins: [
+      baseRedirectPlugin(),
       react(),
       tailwindcss(),
       VitePWA({
@@ -46,6 +62,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         },
         devOptions: {
@@ -56,7 +73,7 @@ export default defineConfig(() => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname || '', '.'),
       },
     },
     server: {

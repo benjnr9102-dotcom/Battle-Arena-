@@ -1,5 +1,5 @@
 import React from 'react';
-import { Swords, Zap, Users, Shield, ArrowRight, Flame, Sparkles, Award } from 'lucide-react';
+import { Swords, Zap, Users, Shield, ArrowRight, Flame, Award, UserCheck } from 'lucide-react';
 import { Opponent, GameType, UserProfile } from '../types';
 
 interface ArenaViewProps {
@@ -15,9 +15,26 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
   onOpenChallenge,
   onGoToLobby,
 }) => {
-  // Featured opponents for quick matchmaking
-  const topOpponent = opponents.find((o) => o.name === 'Boss_Cotonou') || opponents[0];
+  // Real registered opponents
+  const firstOpponent = opponents[0];
   const quickOpponents = opponents.slice(0, 3);
+
+  // Fallback sparring partner if user is the only one registered so far
+  const defaultSparringPartner: Opponent = {
+    id: 'bot_sparring_fide',
+    name: 'Champion_IA',
+    avatar: '',
+    level: 25,
+    winRate: 65,
+    chessElo: 1550,
+    defaultStake: 500,
+    status: 'ready',
+    tapRaceAvgSpeed: 10.2,
+    bio: 'Partenaire d’entraînement tactique officiel.',
+    region: 'Arène Virtuelle',
+  };
+
+  const opponentToChallenge = firstOpponent || defaultSparringPartner;
 
   return (
     <div className="w-full max-w-md mx-auto p-3.5 space-y-4 pb-24">
@@ -30,7 +47,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
         <div className="relative z-10">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase font-bold tracking-widest text-cyan-400 bg-cyan-950/80 border border-cyan-800/80 px-2 py-0.5 rounded">
-              SAISON COMPÉTITIVE 2026
+              SAISON COMPÉTITIVE FIREBASE 2026
             </span>
             <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -42,7 +59,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
             ARÈNE OFFICIELLE
           </h2>
           <p className="text-xs text-slate-300 leading-relaxed mb-3">
-            Défiez des joueurs d'élite aux échecs ou en tap race. Mises virtuelles, arbitrage et 15% de commission plateforme.
+            Défiez de vrais joueurs aux échecs ou en tap race. Comptes Firestore sécurisés, mises virtuelles et arbitrage officiel.
           </p>
 
           {/* Quick Metrics */}
@@ -52,8 +69,10 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
                 <Users className="w-4 h-4" />
               </div>
               <div>
-                <span className="text-[10px] text-slate-400 block">Joueurs en ligne</span>
-                <span className="font-display font-bold text-white">1 428 (démo)</span>
+                <span className="text-[10px] text-slate-400 block">Vrais Joueurs</span>
+                <span className="font-display font-bold text-white">
+                  {opponents.length + 1} inscrit{opponents.length > 0 ? 's' : ''}
+                </span>
               </div>
             </div>
 
@@ -64,7 +83,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
               <div>
                 <span className="text-[10px] text-slate-400 block">Votre Solde</span>
                 <span className="font-display font-bold text-amber-300">
-                  {userProfile.tokens.toLocaleString('fr-FR')} jetons
+                  {userProfile.tokens.toLocaleString('fr-FR')} ₿
                 </span>
               </div>
             </div>
@@ -112,10 +131,10 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
               <div className="text-[11px] text-slate-400">
-                Adversaires dispo : <strong className="text-white">Koffi_229, Marie_BJ...</strong>
+                Adversaire : <strong className="text-white">{opponentToChallenge.name}</strong>
               </div>
               <button
-                onClick={() => onOpenChallenge(topOpponent, 'chess')}
+                onClick={() => onOpenChallenge(opponentToChallenge, 'chess')}
                 className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-display font-bold text-white bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-md shadow-cyan-500/20 transition active:scale-95"
               >
                 <span>DÉFIER</span>
@@ -156,7 +175,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
                 Alerte de cadence : <strong className="text-amber-400">&gt;20 taps/s signalés</strong>
               </div>
               <button
-                onClick={() => onOpenChallenge(quickOpponents[0], 'taprace')}
+                onClick={() => onOpenChallenge(opponentToChallenge, 'taprace')}
                 className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-display font-bold text-white bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 shadow-md shadow-amber-500/20 transition active:scale-95"
               >
                 <span>DÉFIER</span>
@@ -167,11 +186,12 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
         </div>
       </div>
 
-      {/* Quick Match Opponents Carousel */}
+      {/* Real Players in Lobby Carousel */}
       <div>
         <div className="flex items-center justify-between mb-2.5 px-0.5">
-          <h3 className="font-display font-bold text-sm text-white uppercase tracking-wider">
-            Adversaires en attente
+          <h3 className="font-display font-bold text-sm text-white uppercase tracking-wider flex items-center gap-1.5">
+            <UserCheck className="w-4 h-4 text-emerald-400" />
+            Compétiteurs du Lobby
           </h3>
           <button
             onClick={onGoToLobby}
@@ -182,45 +202,60 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          {quickOpponents.map((opp) => (
-            <div
-              key={opp.id}
-              className="bg-[#131b2e] border border-slate-700/70 rounded-xl p-2.5 text-center flex flex-col items-center justify-between hover:border-cyan-500/40 transition"
-            >
-              <div className="relative mb-1.5">
-                <img
-                  src={opp.avatar}
-                  alt={opp.name}
-                  className="w-11 h-11 rounded-full object-cover ring-2 ring-slate-700"
-                />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 absolute bottom-0 right-0 ring-2 ring-[#131b2e]"></span>
-              </div>
-              <h5 className="font-display font-bold text-xs text-white truncate w-full">
-                {opp.name}
-              </h5>
-              <span className="text-[10px] text-slate-400 mb-2">
-                Niv.{opp.level} · {opp.chessElo}
-              </span>
-              <button
-                onClick={() => onOpenChallenge(opp, 'chess')}
-                className="w-full py-1 rounded-md text-[10px] font-display font-bold text-white bg-slate-800 hover:bg-cyan-600 transition"
+        {quickOpponents.length > 0 ? (
+          <div className="grid grid-cols-3 gap-2">
+            {quickOpponents.map((opp) => (
+              <div
+                key={opp.id}
+                className="bg-[#131b2e] border border-slate-700/70 rounded-xl p-2.5 text-center flex flex-col items-center justify-between hover:border-cyan-500/40 transition"
               >
-                Défier
-              </button>
-            </div>
-          ))}
-        </div>
+                <div className="relative mb-1.5">
+                  {opp.avatar ? (
+                    <img
+                      src={opp.avatar}
+                      alt={opp.name}
+                      className="w-11 h-11 rounded-full object-cover ring-2 ring-slate-700"
+                    />
+                  ) : (
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-700 flex items-center justify-center font-display font-bold text-xs text-white ring-2 ring-slate-700">
+                      {opp.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 absolute bottom-0 right-0 ring-2 ring-[#131b2e]"></span>
+                </div>
+                <h5 className="font-display font-bold text-xs text-white truncate w-full">
+                  {opp.name}
+                </h5>
+                <span className="text-[10px] text-slate-400 mb-2">
+                  Niv.{opp.level} · {opp.chessElo}
+                </span>
+                <button
+                  onClick={() => onOpenChallenge(opp, 'chess')}
+                  className="w-full py-1 rounded-md text-[10px] font-display font-bold text-white bg-slate-800 hover:bg-cyan-600 transition"
+                >
+                  Défier
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-[#131b2e]/60 border border-slate-800 rounded-xl p-3 text-center">
+            <p className="text-xs text-slate-300 mb-1">Aucun autre joueur inscrit pour le moment.</p>
+            <p className="text-[11px] text-slate-400">
+              Tous les nouveaux inscrits apparaissent ici automatiquement en temps réel !
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Architecture and Security Note */}
       <div className="bg-[#0b101c] border border-slate-800 rounded-xl p-3 text-[11px] text-slate-400 space-y-1">
         <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
           <Shield className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Architecture E-Sport & Jetons Virtuels</span>
+          <span>Comptes Joueurs & Firestore Synchronisés</span>
         </div>
         <p>
-          Version MVP autonome installable en PWA. Les soldes et résultats sont stockés localement sur votre appareil. L'architecture est modulaire et prête pour un raccordement direct à un backend sécurisé (Firebase / Cloud SQL).
+          Votre profil et vos jetons sont synchronisés en direct sur Firebase Firestore (`users/{'{uid}'}`). Les jetons restent purement virtuels et sans valeur monétaire réelle.
         </p>
       </div>
     </div>

@@ -49,6 +49,24 @@ export interface UserProfile {
   totalFeesPaid: number;
 }
 
+export interface FirestoreUser {
+  uid: string;
+  pseudo: string;
+  jetons: number;
+  createdAt?: any;
+  photo?: string;
+  level?: number;
+  xp?: number;
+  chessElo?: number;
+  tapRaceBest?: number;
+  victories?: number;
+  defeats?: number;
+  draws?: number;
+  totalMatches?: number;
+  totalTokensWon?: number;
+  totalFeesPaid?: number;
+}
+
 export interface ActiveChallenge {
   opponent: Opponent;
   gameType: GameType;

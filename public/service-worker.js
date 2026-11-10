@@ -1,14 +1,16 @@
 // BATTLE ARENA - Progressive Web App Service Worker
-const CACHE_NAME = 'battle-arena-v1';
+const CACHE_NAME = 'battle-arena-v2';
+const BASE_PATH = self.location.pathname.includes('/Battle-Arena-/') ? '/Battle-Arena-/' : '/';
+
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/icon.svg',
-  '/favicon.ico',
-  '/pwa-192x192.png',
-  '/pwa-512x512.png',
-  '/apple-touch-icon.png'
+  BASE_PATH,
+  `${BASE_PATH}index.html`,
+  `${BASE_PATH}manifest.webmanifest`,
+  `${BASE_PATH}icon.svg`,
+  `${BASE_PATH}favicon.ico`,
+  `${BASE_PATH}pwa-192x192.png`,
+  `${BASE_PATH}pwa-512x512.png`,
+  `${BASE_PATH}apple-touch-icon.png`
 ];
 
 self.addEventListener('install', (event) => {
@@ -36,13 +38,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests
   if (event.request.method !== 'GET') return;
+
+  // Bypass Firebase auth and firestore API calls from SW cache
+  const url = event.request.url;
+  if (
+    url.includes('identitytoolkit.googleapis.com') ||
+    url.includes('securetoken.googleapis.com') ||
+    url.includes('firestore.googleapis.com') ||
+    url.includes('firebaseinstallations.googleapis.com')
+  ) {
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cache but update in background
         fetch(event.request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
@@ -71,7 +82,7 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => {
           if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
+            return caches.match(`${BASE_PATH}index.html`) || caches.match('/index.html');
           }
         });
     })

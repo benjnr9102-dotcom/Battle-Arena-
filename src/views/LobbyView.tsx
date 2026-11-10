@@ -1,42 +1,96 @@
-import React, { useState } from 'react';
-import { Search, Filter, Swords, Zap, CheckCircle2, Clock, Swords as SwordsIcon } from 'lucide-react';
-import { Opponent, GameType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
+import { Search, Swords, Zap, Users, Loader2, Award } from 'lucide-react';
+import { Opponent, GameType, FirestoreUser } from '../types';
 
 interface LobbyViewProps {
-  opponents: Opponent[];
+  currentUserId: string;
   onOpenChallenge: (opponent: Opponent, gameType: GameType) => void;
 }
 
-export const LobbyView: React.FC<LobbyViewProps> = ({ opponents, onOpenChallenge }) => {
+export const LobbyView: React.FC<LobbyViewProps> = ({ currentUserId, onOpenChallenge }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'online'>('all');
+  const [realPlayers, setRealPlayers] = useState<FirestoreUser[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Filter opponents
-  const filteredOpponents = opponents.filter((opp) => {
-    const matchesSearch =
-      opp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      opp.region.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      opp.bio.toLowerCase().includes(searchQuery.toLowerCase());
+  // Requirement 4: Afficher en temps réel (onSnapshot) la liste des vrais joueurs inscrits (pseudo + photo), sans les faux joueurs démo
+  useEffect(() => {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, orderBy('createdAt', 'desc'));
 
-    const matchesStatus =
-      statusFilter === 'all'
-        ? true
-        : statusFilter === 'ready'
-        ? opp.status === 'ready'
-        : opp.status === 'online';
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const players: FirestoreUser[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          // Filter out current user from opponents list
+          if (docSnap.id !== currentUserId) {
+            players.push({
+              uid: docSnap.id,
+              pseudo: data.pseudo || 'Joueur Anonyme',
+              jetons: typeof data.jetons === 'number' ? data.jetons : 5000,
+              photo: data.photo || '',
+              level: data.level || 1,
+              chessElo: data.chessElo || 1200,
+              tapRaceBest: data.tapRaceBest || 0,
+              victories: data.victories || 0,
+              defeats: data.defeats || 0,
+              createdAt: data.createdAt,
+            });
+          }
+        });
+        setRealPlayers(players);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Erreur onSnapshot Firestore users:', error);
+        setLoading(false);
+      }
+    );
 
-    return matchesSearch && matchesStatus;
-  });
+    return () => unsubscribe();
+  }, [currentUserId]);
+
+  const filteredPlayers = realPlayers.filter((player) =>
+    player.pseudo.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const convertToOpponent = (player: FirestoreUser): Opponent => {
+    return {
+      id: player.uid,
+      name: player.pseudo,
+      avatar: player.photo || '',
+      level: player.level || 1,
+      winRate:
+        (player.victories || 0) + (player.defeats || 0) > 0
+          ? Math.round(((player.victories || 0) / ((player.victories || 0) + (player.defeats || 0))) * 100)
+          : 50,
+      chessElo: player.chessElo || 1200,
+      defaultStake: Math.min(player.jetons || 5000, 1000),
+      status: 'ready',
+      tapRaceAvgSpeed: 10.0,
+      bio: 'Joueur officiel BATTLE ARENA',
+      region: 'En ligne',
+    };
+  };
 
   return (
     <div className="w-full max-w-md mx-auto p-3.5 space-y-3.5 pb-24">
-      {/* Lobby Header */}
+      {/* Header */}
       <div>
-        <h2 className="font-display font-black text-xl text-white tracking-wider">
-          LOBBY DES ADVERSAIRES
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-display font-black text-xl text-white tracking-wider">
+            LOBBY DES JOUEURS
+          </h2>
+          <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/70 border border-cyan-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            {realPlayers.length} joueur{realPlayers.length > 1 ? 's' : ''} inscrit{realPlayers.length > 1 ? 's' : ''}
+          </span>
+        </div>
         <p className="text-xs text-slate-400">
-          Recherchez et défiez un compétiteur en temps réel
+          Vrais compétiteurs inscrits sur Firebase en temps réel
         </p>
       </div>
 
@@ -47,7 +101,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ opponents, onOpenChallenge
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Rechercher par pseudo (ex: Koffi_229, Marie_BJ)..."
+          placeholder="Rechercher un vrai joueur par pseudo..."
           className="w-full bg-[#131b2e] border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
         />
         {searchQuery && (
@@ -60,140 +114,83 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ opponents, onOpenChallenge
         )}
       </div>
 
-      {/* Status Filters */}
-      <div className="flex items-center gap-1.5 p-1 bg-[#131b2e] rounded-xl border border-slate-800 text-xs">
-        <button
-          onClick={() => setStatusFilter('all')}
-          className={`flex-1 py-1.5 rounded-lg font-medium transition ${
-            statusFilter === 'all'
-              ? 'bg-cyan-500 text-black font-bold shadow-sm'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Tous ({opponents.length})
-        </button>
-        <button
-          onClick={() => setStatusFilter('ready')}
-          className={`flex-1 py-1.5 rounded-lg font-medium transition ${
-            statusFilter === 'ready'
-              ? 'bg-cyan-500 text-black font-bold shadow-sm'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Prêts au combat
-        </button>
-        <button
-          onClick={() => setStatusFilter('online')}
-          className={`flex-1 py-1.5 rounded-lg font-medium transition ${
-            statusFilter === 'online'
-              ? 'bg-cyan-500 text-black font-bold shadow-sm'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          En ligne
-        </button>
-      </div>
-
-      {/* Opponents List */}
+      {/* Player List */}
       <div className="space-y-3">
-        {filteredOpponents.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12 bg-[#131b2e]/50 rounded-2xl border border-slate-800 p-6 flex flex-col items-center">
+            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-2" />
+            <p className="text-xs text-slate-400">Connexion à Firestore et chargement du Lobby...</p>
+          </div>
+        ) : filteredPlayers.length === 0 ? (
           <div className="text-center py-10 bg-[#131b2e]/50 rounded-2xl border border-slate-800 p-6">
-            <p className="text-sm font-semibold text-white mb-1">Aucun adversaire trouvé</p>
-            <p className="text-xs text-slate-400 mb-3">
-              Modifiez votre recherche ou effacez les filtres.
+            <Users className="w-10 h-10 text-cyan-400/60 mx-auto mb-2" />
+            <h4 className="text-sm font-bold text-white mb-1">
+              {searchQuery ? 'Aucun joueur trouvé' : 'En attente d’autres compétiteurs'}
+            </h4>
+            <p className="text-xs text-slate-400 mb-3 max-w-xs mx-auto">
+              {searchQuery
+                ? 'Aucun profil joueur ne correspond à ce pseudonyme.'
+                : 'Vous êtes le premier joueur connecté ! Dès qu’un autre joueur crée son compte, il apparaîtra ici instantanément en temps réel.'}
             </p>
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setStatusFilter('all');
-              }}
-              className="px-3 py-1.5 bg-slate-800 text-cyan-400 text-xs font-semibold rounded-lg"
-            >
-              Réinitialiser les filtres
-            </button>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="px-3 py-1.5 bg-slate-800 text-cyan-400 text-xs font-semibold rounded-lg"
+              >
+                Effacer la recherche
+              </button>
+            )}
           </div>
         ) : (
-          filteredOpponents.map((opp) => {
-            const isReady = opp.status === 'ready';
-            const isOnline = opp.status === 'online';
-            const isInMatch = opp.status === 'in_match';
+          filteredPlayers.map((player) => {
+            const opp = convertToOpponent(player);
 
             return (
               <div
-                key={opp.id}
+                key={player.uid}
                 className="bg-gradient-to-br from-[#131b2e] to-[#0c1424] border border-slate-700/80 hover:border-cyan-500/40 rounded-2xl p-3.5 shadow-md transition"
               >
                 {/* Header Profile Row */}
                 <div className="flex items-start justify-between gap-3 mb-2.5">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <img
-                        src={opp.avatar}
-                        alt={opp.name}
-                        className="w-12 h-12 rounded-xl object-cover ring-2 ring-slate-700"
-                      />
+                      {player.photo ? (
+                        <img
+                          src={player.photo}
+                          alt={player.pseudo}
+                          className="w-12 h-12 rounded-xl object-cover ring-2 ring-slate-700"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-700 flex items-center justify-center font-display font-bold text-base text-white ring-2 ring-slate-700">
+                          {player.pseudo.charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <span
-                        className={`w-3 h-3 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#131b2e] ${
-                          isReady ? 'bg-emerald-400' : isOnline ? 'bg-cyan-400' : 'bg-amber-400'
-                        }`}
-                        title={isReady ? 'Prêt' : isOnline ? 'En ligne' : 'En match'}
+                        className="w-3 h-3 rounded-full absolute -bottom-1 -right-1 ring-2 ring-[#131b2e] bg-emerald-400"
+                        title="Joueur inscrit"
                       />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-display font-bold text-base text-white">
-                          {opp.name}
+                          {player.pseudo}
                         </h4>
                         <span className="text-[10px] font-bold font-display px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
-                          Niv.{opp.level}
+                          Niv.{player.level || 1}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-400">
-                        {opp.region}
+                        {player.chessElo || 1200} ELO · Compte officiel
                       </p>
                     </div>
                   </div>
 
-                  {/* Status Badge */}
-                  <span
-                    className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                      isReady
-                        ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/80'
-                        : isOnline
-                        ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-800/80'
-                        : 'bg-amber-950/80 text-amber-300 border border-amber-800/80'
-                    }`}
-                  >
-                    {isReady ? 'Prêt' : isOnline ? 'En ligne' : 'En match'}
-                  </span>
-                </div>
-
-                {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-2 bg-[#090d16]/70 border border-slate-800/80 rounded-xl p-2.5 mb-3 text-center">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Victoires</span>
-                    <span className="font-display font-bold text-xs text-emerald-400">
-                      {opp.winRate}%
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">ELO Échecs</span>
-                    <span className="font-display font-bold text-xs text-cyan-300 font-mono">
-                      {opp.chessElo}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Mise suggérée</span>
-                    <span className="font-display font-bold text-xs text-amber-300">
-                      {opp.defaultStake} ₿
-                    </span>
+                  {/* Token Balance */}
+                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#090d16] border border-slate-800 text-amber-300 font-display font-bold text-xs">
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{(player.jetons ?? 5000).toLocaleString('fr-FR')} ₿</span>
                   </div>
                 </div>
-
-                {/* Bio text */}
-                <p className="text-xs text-slate-300 italic mb-3">
-                  "{opp.bio}"
-                </p>
 
                 {/* Dual Challenge Buttons: Échecs vs Tap Race */}
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">

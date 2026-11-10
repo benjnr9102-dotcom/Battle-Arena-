@@ -1,18 +1,24 @@
 import React from 'react';
-import { Coins, Download, Wifi, WifiOff, Users, ShieldAlert } from 'lucide-react';
+import { Coins, Download, Wifi, WifiOff, Users } from 'lucide-react';
 import { UserProfile } from '../types';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 interface HeaderProps {
   userProfile: UserProfile;
+  playerCount?: number;
   onOpenPWAInfo: () => void;
   onResetTokens?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ userProfile, onOpenPWAInfo, onResetTokens }) => {
+export const Header: React.FC<HeaderProps> = ({
+  userProfile,
+  playerCount = 1,
+  onOpenPWAInfo,
+  onResetTokens,
+}) => {
   const isOnline = useOnlineStatus();
-  const { isInstallable, isInstalled, install, isIOS } = usePWAInstall();
+  const { isInstallable, isInstalled, install } = usePWAInstall();
 
   return (
     <header className="sticky top-0 z-40 bg-[#090d16]/95 backdrop-blur-md border-b border-slate-800/80 px-3.5 py-2.5 transition-colors">
@@ -30,13 +36,13 @@ export const Header: React.FC<HeaderProps> = ({ userProfile, onOpenPWAInfo, onRe
                 BATTLE<span className="text-cyan-400">ARENA</span>
               </span>
               <span className="text-[10px] uppercase font-semibold text-cyan-400/80 px-1 py-0.2 bg-cyan-950/60 border border-cyan-800/60 rounded">
-                PWA
+                FIREBASE
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
               <Users className="w-3 h-3 text-slate-400" />
-              <span>1 428 joueurs (démo)</span>
+              <span>{playerCount} joueur{playerCount > 1 ? 's' : ''} en direct</span>
             </div>
           </div>
         </div>
@@ -46,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({ userProfile, onOpenPWAInfo, onRe
           {/* Virtual Tokens balance */}
           <div
             onClick={onResetTokens}
-            title="Solde virtuel (cliquer pour recharger en démo)"
+            title="Solde virtuel Firestore (cliquer pour recharger)"
             className="flex items-center gap-1.5 bg-[#131b2e] hover:bg-[#1a253e] transition-colors border border-cyan-500/30 rounded-lg px-2.5 py-1 cursor-pointer group"
           >
             <div className="w-4 h-4 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 flex items-center justify-center text-[10px] font-black text-black">
