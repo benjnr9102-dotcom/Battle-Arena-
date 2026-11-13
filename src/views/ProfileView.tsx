@@ -230,7 +230,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="bg-[#090d16]/80 rounded-xl p-3 border border-slate-800/80 flex items-center justify-between">
           <div>
             <span className="text-[10px] text-slate-400 uppercase font-medium block">
-              Solde Firestore
+              Solde de jetons
             </span>
             <span className="font-display font-black text-xl text-amber-300">
               {userProfile.tokens.toLocaleString('fr-FR')} ₿
@@ -240,7 +240,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <button
             onClick={onResetTokens}
             className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-display font-bold text-cyan-300 bg-cyan-950/80 hover:bg-cyan-900/80 border border-cyan-800/80 transition active:scale-95"
-            title="Recharger 5 000 jetons virtuels dans Firestore"
+            title="Recharger 5 000 jetons virtuels"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Recharger 5 000 ₿</span>

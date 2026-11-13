@@ -90,7 +90,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ currentUserId, onOpenChall
           </span>
         </div>
         <p className="text-xs text-slate-400">
-          Vrais compétiteurs inscrits sur Firebase en temps réel
+          Compétiteurs disponibles pour un duel en direct
         </p>
       </div>
 
@@ -101,7 +101,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ currentUserId, onOpenChall
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Rechercher un vrai joueur par pseudo..."
+          placeholder="Rechercher un joueur par pseudo..."
           className="w-full bg-[#131b2e] border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 transition"
         />
         {searchQuery && (
@@ -119,7 +119,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ currentUserId, onOpenChall
         {loading ? (
           <div className="text-center py-12 bg-[#131b2e]/50 rounded-2xl border border-slate-800 p-6 flex flex-col items-center">
             <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-2" />
-            <p className="text-xs text-slate-400">Connexion à Firestore et chargement du Lobby...</p>
+            <p className="text-xs text-slate-400">Recherche des compétiteurs...</p>
           </div>
         ) : filteredPlayers.length === 0 ? (
           <div className="text-center py-10 bg-[#131b2e]/50 rounded-2xl border border-slate-800 p-6">

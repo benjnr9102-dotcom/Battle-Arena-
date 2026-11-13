@@ -218,20 +218,20 @@ export const VideoVerificationModal: React.FC<VideoVerificationModalProps> = ({
                 {errorMessage || 'L\'accès caméra est requis pour le protocole standard.'}
               </p>
               <span className="text-[10px] text-slate-400 bg-slate-900 px-2 py-1 rounded border border-slate-800">
-                Mode démonstration : Vous pouvez continuer le match
+                Poursuite autorisée pour cette partie
               </span>
             </div>
           )}
         </div>
 
-        {/* Mandatory Transparency Note */}
+        {/* Info Note */}
         <div className="bg-[#131b2e] border border-slate-700/60 rounded-xl p-2.5 mb-3 text-[10px] text-slate-400 leading-normal">
           <p className="flex items-start gap-1.5 text-slate-300 font-semibold mb-0.5">
             <ShieldAlert className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.2" />
-            Note de transparence technique :
+            Vérification de présence du joueur :
           </p>
           <p>
-            Aperçu de vérification faciale en direct (Contrôle client local). La certification biométrique et l'arbitrage antifraude définitif sont déportés sur un backend sécurisé en environnement de production.
+            Validation de sécurité avant le démarrage du duel pour garantir l'équité de la compétition.
           </p>
         </div>
 

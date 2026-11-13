@@ -21,6 +21,7 @@ import { ChallengeModal } from './components/ChallengeModal';
 import { MatchResultModal } from './components/MatchResultModal';
 
 import { AuthView } from './views/AuthView';
+import { ResetPasswordView } from './views/ResetPasswordView';
 import { ArenaView } from './views/ArenaView';
 import { LobbyView } from './views/LobbyView';
 import { HistoryView } from './views/HistoryView';
@@ -36,6 +37,29 @@ import { Swords, Loader2, Mail, RefreshCw, Send, CheckCircle2 } from 'lucide-rea
 
 export default function App() {
   const isOnline = useOnlineStatus();
+
+  // In-app password reset via URL parameters (mode=resetPassword & oobCode)
+  const [resetCode, setResetCode] = useState<string | null>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashQuery = window.location.hash.includes('?')
+        ? window.location.hash.split('?')[1]
+        : '';
+      const hashParams = new URLSearchParams(hashQuery);
+
+      const mode = searchParams.get('mode') || hashParams.get('mode');
+      const oobCode = searchParams.get('oobCode') || hashParams.get('oobCode');
+
+      if (mode === 'resetPassword' && oobCode) {
+        return oobCode;
+      }
+    } catch (e) {
+      console.warn('Erreur lecture paramètres URL resetPassword:', e);
+    }
+    return null;
+  });
+
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string>('');
 
   // Firebase Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -359,6 +383,38 @@ export default function App() {
     }
   };
 
+  // Reset Password Flow Handlers
+  const handleResetSuccess = async (message: string) => {
+    try {
+      await signOut(auth);
+    } catch (e) {}
+    setResetCode(null);
+    setAuthSuccessMsg(message || 'Mot de passe modifié');
+    try {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    } catch (e) {}
+  };
+
+  const handleResetCancel = () => {
+    setResetCode(null);
+    try {
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    } catch (e) {}
+  };
+
+  // 1. Password Reset View when link contains mode=resetPassword and oobCode
+  if (resetCode) {
+    return (
+      <ResetPasswordView
+        oobCode={resetCode}
+        onSuccess={handleResetSuccess}
+        onCancel={handleResetCancel}
+      />
+    );
+  }
+
   // Auth Loading Screen
   if (authLoading) {
     return (
@@ -376,7 +432,12 @@ export default function App() {
 
   // Not authenticated: render Auth View (Inscription / Connexion / Mot de passe oublié)
   if (!currentUser) {
-    return <AuthView />;
+    return (
+      <AuthView
+        initialMessage={authSuccessMsg}
+        onSuccess={() => setAuthSuccessMsg('')}
+      />
+    );
   }
 
   return (

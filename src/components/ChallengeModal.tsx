@@ -181,7 +181,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
         <div className="bg-slate-900/60 rounded-lg p-2.5 mb-5 flex items-start gap-2 border border-slate-800 text-[11px] text-slate-400">
           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
           <span>
-            Règle de sécurité : aucun jeton n'est bloqué avant votre confirmation. La vérification vidéo de 30s s'ouvrira après confirmation.
+            Règle de jeu : aucun jeton n'est prélevé avant votre confirmation.
           </span>
         </div>
 
@@ -189,7 +189,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
         {!hasEnoughTokens && (
           <div className="mb-4 p-2.5 rounded-xl bg-red-950/60 border border-red-500/50 flex items-center gap-2 text-xs text-red-300">
             <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-            <span>Solde insuffisant pour cette mise. Diminuez le montant ou rechargez votre solde démo.</span>
+            <span>Solde insuffisant pour cette mise. Diminuez le montant ou rechargez votre solde.</span>
           </div>
         )}
 

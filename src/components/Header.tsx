@@ -35,8 +35,8 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-display font-bold tracking-wider text-base text-white leading-none">
                 BATTLE<span className="text-cyan-400">ARENA</span>
               </span>
-              <span className="text-[10px] uppercase font-semibold text-cyan-400/80 px-1 py-0.2 bg-cyan-950/60 border border-cyan-800/60 rounded">
-                FIREBASE
+              <span className="text-[10px] uppercase font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 rounded px-1.5 py-0.2">
+                EN LIGNE
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Virtual Tokens balance */}
           <div
             onClick={onResetTokens}
-            title="Solde virtuel Firestore (cliquer pour recharger)"
+            title="Solde de jetons (cliquer pour recharger)"
             className="flex items-center gap-1.5 bg-[#131b2e] hover:bg-[#1a253e] transition-colors border border-cyan-500/30 rounded-lg px-2.5 py-1 cursor-pointer group"
           >
             <div className="w-4 h-4 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 flex items-center justify-center text-[10px] font-black text-black">

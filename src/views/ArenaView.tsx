@@ -47,7 +47,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
         <div className="relative z-10">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] uppercase font-bold tracking-widest text-cyan-400 bg-cyan-950/80 border border-cyan-800/80 px-2 py-0.5 rounded">
-              SAISON COMPÉTITIVE FIREBASE 2026
+              SAISON COMPÉTITIVE 2026
             </span>
             <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -59,7 +59,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
             ARÈNE OFFICIELLE
           </h2>
           <p className="text-xs text-slate-300 leading-relaxed mb-3">
-            Défiez de vrais joueurs aux échecs ou en tap race. Comptes Firestore sécurisés, mises virtuelles et arbitrage officiel.
+            Défiez d'autres joueurs aux échecs ou en tap race avec vos jetons virtuels.
           </p>
 
           {/* Quick Metrics */}
@@ -69,9 +69,9 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
                 <Users className="w-4 h-4" />
               </div>
               <div>
-                <span className="text-[10px] text-slate-400 block">Vrais Joueurs</span>
+                <span className="text-[10px] text-slate-400 block">Joueurs inscrits</span>
                 <span className="font-display font-bold text-white">
-                  {opponents.length + 1} inscrit{opponents.length > 0 ? 's' : ''}
+                  {opponents.length + 1} joueur{opponents.length > 0 ? 's' : ''}
                 </span>
               </div>
             </div>
@@ -160,7 +160,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">
-                    Vitesse pure · Zéro aléatoire · Détection anti-cheat
+                    Vitesse pure · Réflexes · Décompte officiel
                   </p>
                 </div>
               </div>
@@ -172,7 +172,7 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
               <div className="text-[11px] text-slate-400">
-                Alerte de cadence : <strong className="text-amber-400">&gt;20 taps/s signalés</strong>
+                Durée du duel : <strong className="text-cyan-400">15 secondes chrono</strong>
               </div>
               <button
                 onClick={() => onOpenChallenge(opponentToChallenge, 'taprace')}
@@ -248,14 +248,14 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
         )}
       </div>
 
-      {/* Architecture and Security Note */}
+      {/* Clean player-facing rules and virtual tokens notice */}
       <div className="bg-[#0b101c] border border-slate-800 rounded-xl p-3 text-[11px] text-slate-400 space-y-1">
         <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
           <Shield className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Comptes Joueurs & Firestore Synchronisés</span>
+          <span>Règles de jeu & Jetons virtuels</span>
         </div>
         <p>
-          Votre profil et vos jetons sont synchronisés en direct sur Firebase Firestore (`users/{'{uid}'}`). Les jetons restent purement virtuels et sans valeur monétaire réelle.
+          Tous les jetons sont 100 % virtuels et destinés exclusivement aux compétitions et classements de l'arène.
         </p>
       </div>
     </div>

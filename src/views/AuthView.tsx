@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -23,13 +23,15 @@ import {
   ArrowLeft,
   Mail,
   ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface AuthViewProps {
+  initialMessage?: string;
   onSuccess?: () => void;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
+export const AuthView: React.FC<AuthViewProps> = ({ initialMessage = '', onSuccess }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,8 +39,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
   const [pseudo, setPseudo] = useState('');
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [resetSuccessMsg, setResetSuccessMsg] = useState<string>('');
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string>(initialMessage);
   const [loading, setLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (initialMessage) {
+      setResetSuccessMsg(initialMessage);
+      setMode('login');
+    }
+  }, [initialMessage]);
 
   // Password visibility states
   const [showLoginPassword, setShowLoginPassword] = useState<boolean>(false);

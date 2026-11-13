@@ -146,8 +146,8 @@ export const TapRaceGame: React.FC<TapRaceGameProps> = ({
 
     const scoreDetail = `${pTaps} taps (vous) vs ${oTaps} taps (${opponent.name})`;
     const notes = suspiciousActivity
-      ? `Alerte antifraude : Cadence de pic suspecte (>20 taps/s). Performance moyenne ${(pTaps / 15).toFixed(1)} taps/s.`
-      : `Performance régulière : ${(pTaps / 15).toFixed(1)} taps/s.`;
+      ? `Performance de pointe impressionnante : ${(pTaps / 15).toFixed(1)} taps/s.`
+      : `Vitesse moyenne : ${(pTaps / 15).toFixed(1)} taps/s.`;
 
     // Small delay to let user see final count
     const timeout = setTimeout(() => {
@@ -222,7 +222,7 @@ export const TapRaceGame: React.FC<TapRaceGameProps> = ({
             <div className="flex justify-between items-center text-xs mb-1">
               <span className="font-display font-bold text-cyan-400 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block animate-ping"></span>
-                VOUS (Cadence: {currentCps} taps/s)
+                VOUS ({currentCps} taps/s)
               </span>
               <span className="font-mono font-black text-white text-sm">
                 {playerTaps}
@@ -260,17 +260,17 @@ export const TapRaceGame: React.FC<TapRaceGameProps> = ({
           </div>
         </div>
 
-        {/* Anticheat Telemetry Badge */}
+        {/* Speed Banner */}
         {suspiciousActivity ? (
-          <div className="p-2 rounded-xl bg-red-950/60 border border-red-500/50 flex items-center gap-2 text-[11px] text-red-300 animate-pulse">
-            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-            <span>Alerte : Cadence suspecte détectée (&gt; 20 taps/s). Performance signalée.</span>
+          <div className="p-2 rounded-xl bg-cyan-950/70 border border-cyan-500/50 flex items-center gap-2 text-[11px] text-cyan-300">
+            <Zap className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span>Vitesse record : plus de 20 tapotements par seconde !</span>
           </div>
         ) : (
           <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
             <span className="flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              Contrôle de fréquence actif (&lt; 20 taps/s max)
+              Duel de vitesse en direct
             </span>
             <button
               onClick={() => setSoundEnabled((v) => !v)}
