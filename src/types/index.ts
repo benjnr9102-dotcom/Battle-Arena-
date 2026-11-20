@@ -72,3 +72,21 @@ export interface ActiveChallenge {
   gameType: GameType;
   stake: number;
 }
+
+export type ChallengeStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
+export type ChallengeStake = 200 | 500 | 1000 | 2000;
+
+export interface ChallengeInvite {
+  id: string;
+  fromUid: string;
+  toUid: string;
+  fromPseudo: string;
+  toPseudo: string;
+  game: GameType;
+  stake: ChallengeStake;
+  status: ChallengeStatus;
+  createdAt?: any;
+  createdAtMs?: number | null;
+}
+

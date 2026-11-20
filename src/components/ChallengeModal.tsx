@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Swords, Zap, AlertTriangle, ShieldCheck, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Swords, Zap, AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
 import { Opponent, GameType } from '../types';
 
 interface ChallengeModalProps {
@@ -7,37 +7,58 @@ interface ChallengeModalProps {
   opponent: Opponent | null;
   initialGameType: GameType;
   userTokens: number;
+  isInviteMode?: boolean;
+  isSubmitting?: boolean;
+  errorMessage?: string;
   onCancel: () => void;
   onConfirm: (opponent: Opponent, gameType: GameType, stake: number) => void;
 }
+
+const VALID_STAKES = [200, 500, 1000, 2000] as const;
 
 export const ChallengeModal: React.FC<ChallengeModalProps> = ({
   isOpen,
   opponent,
   initialGameType,
   userTokens,
+  isInviteMode = false,
+  isSubmitting = false,
+  errorMessage = '',
   onCancel,
   onConfirm,
 }) => {
   const [selectedGame, setSelectedGame] = useState<GameType>(initialGameType);
-  const [stake, setStake] = useState<number>(opponent?.defaultStake || 1000);
+  const [stake, setStake] = useState<number>(1000);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedGame(initialGameType);
+      const defaultCandidate = opponent?.defaultStake;
+      if (defaultCandidate && (VALID_STAKES as readonly number[]).includes(defaultCandidate)) {
+        setStake(defaultCandidate);
+      } else {
+        setStake(1000);
+      }
+    }
+  }, [isOpen, initialGameType, opponent]);
 
   if (!isOpen || !opponent) return null;
 
   const totalPot = stake * 2;
   const platformFee = Math.round(totalPot * 0.15);
   const netWinning = totalPot - platformFee;
-  const netProfit = netWinning - stake; // e.g. 1700 - 1000 = +700
   const hasEnoughTokens = userTokens >= stake;
 
-  const stakeOptions = [200, 500, 1000, 2000];
+  const stakeOptions = VALID_STAKES;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div className="w-full max-w-sm bg-[#0d1322] border border-cyan-500/30 rounded-2xl p-5 shadow-2xl relative max-h-[95vh] overflow-y-auto">
         <button
+          type="button"
           onClick={onCancel}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-700 transition"
+          disabled={isSubmitting}
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-700 transition disabled:opacity-40"
         >
           <X className="w-5 h-5" />
         </button>
@@ -55,11 +76,17 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
         {/* Opponent Card */}
         <div className="bg-[#131b2e] border border-slate-700/60 rounded-xl p-3.5 mb-4 flex items-center gap-3">
           <div className="relative">
-            <img
-              src={opponent.avatar}
-              alt={opponent.name}
-              className="w-13 h-13 rounded-full object-cover ring-2 ring-cyan-400/60"
-            />
+            {opponent.avatar ? (
+              <img
+                src={opponent.avatar}
+                alt={opponent.name}
+                className="w-13 h-13 rounded-full object-cover ring-2 ring-cyan-400/60"
+              />
+            ) : (
+              <div className="w-13 h-13 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-700 flex items-center justify-center font-display font-bold text-lg text-white ring-2 ring-cyan-400/60">
+                {opponent.name.charAt(0).toUpperCase()}
+              </div>
+            )}
             <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500 text-black font-display">
               Niv.{opponent.level}
             </span>
@@ -90,6 +117,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => setSelectedGame('chess')}
               className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
                 selectedGame === 'chess'
@@ -108,6 +136,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
 
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => setSelectedGame('taprace')}
               className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
                 selectedGame === 'taprace'
@@ -142,6 +171,7 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
               <button
                 key={amount}
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => setStake(amount)}
                 className={`py-2 text-xs font-bold font-display rounded-lg border transition ${
                   stake === amount
@@ -158,30 +188,32 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
           <div className="bg-[#131b2e]/80 border border-slate-700/60 rounded-xl p-3 text-xs space-y-1.5">
             <div className="flex justify-between text-slate-300">
               <span>Mise par joueur :</span>
-              <span className="font-semibold text-white">{stake.toLocaleString()} jetons</span>
+              <span className="font-semibold text-white">{stake.toLocaleString('fr-FR')} jetons</span>
             </div>
             <div className="flex justify-between text-slate-300">
               <span>Cagnotte totale du duel :</span>
-              <span className="font-semibold text-white">{totalPot.toLocaleString()} jetons</span>
+              <span className="font-semibold text-white">{totalPot.toLocaleString('fr-FR')} jetons</span>
             </div>
             <div className="flex justify-between text-slate-400">
               <span>Commission plateforme (15%) :</span>
-              <span className="text-amber-400/90 font-medium">-{platformFee.toLocaleString()} jetons</span>
+              <span className="text-amber-400/90 font-medium">-{platformFee.toLocaleString('fr-FR')} jetons</span>
             </div>
             <div className="pt-1.5 border-t border-slate-700/60 flex justify-between items-center text-sm">
               <span className="font-bold text-white">Gain net vainqueur :</span>
               <span className="font-display font-bold text-cyan-400 text-base">
-                +{netWinning.toLocaleString()} jetons
+                +{netWinning.toLocaleString('fr-FR')} jetons
               </span>
             </div>
           </div>
         </div>
 
         {/* Security Rule Note */}
-        <div className="bg-slate-900/60 rounded-lg p-2.5 mb-5 flex items-start gap-2 border border-slate-800 text-[11px] text-slate-400">
+        <div className="bg-slate-900/60 rounded-lg p-2.5 mb-4 flex items-start gap-2 border border-slate-800 text-[11px] text-slate-400">
           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
           <span>
-            Règle de jeu : aucun jeton n'est prélevé avant votre confirmation.
+            {isInviteMode
+              ? "Aucun jeton n'est prélevé lors de l'envoi de l'invitation."
+              : "Règle de jeu : aucun jeton n'est prélevé avant votre confirmation."}
           </span>
         </div>
 
@@ -193,25 +225,42 @@ export const ChallengeModal: React.FC<ChallengeModalProps> = ({
           </div>
         )}
 
+        {/* Submission Error */}
+        {errorMessage && (
+          <div className="mb-4 p-2.5 rounded-xl bg-red-950/60 border border-red-500/50 flex items-center gap-2 text-xs text-red-300">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2.5">
           <button
             type="button"
+            disabled={isSubmitting}
             onClick={onCancel}
-            className="w-full py-2.5 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition"
+            className="w-full py-2.5 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition disabled:opacity-40"
           >
             ANNULER
           </button>
           <button
             type="button"
-            disabled={!hasEnoughTokens}
+            disabled={!hasEnoughTokens || isSubmitting}
             onClick={() => onConfirm(opponent, selectedGame, stake)}
-            className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-98"
+            className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition active:scale-98 flex items-center justify-center gap-1.5"
           >
-            CONFIRMER LE DÉFI
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>ENVOI...</span>
+              </>
+            ) : (
+              <span>CONFIRMER LE DÉFI</span>
+            )}
           </button>
         </div>
       </div>
     </div>
   );
 };
+

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   onAuthStateChanged,
   signOut,
@@ -11,13 +11,27 @@ import {
   sendPasswordResetEmail,
   User,
 } from 'firebase/auth';
-import { doc, onSnapshot, collection, updateDoc, increment } from 'firebase/firestore';
+import {
+  doc,
+  onSnapshot,
+  collection,
+  updateDoc,
+  increment,
+  addDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  serverTimestamp,
+} from 'firebase/firestore';
 import { auth, db } from './firebase';
 
 import { Header } from './components/Header';
 import { BottomNav, NavTab } from './components/BottomNav';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { ChallengeModal } from './components/ChallengeModal';
+import { OutgoingInviteModal } from './components/OutgoingInviteModal';
+import { IncomingInviteModal } from './components/IncomingInviteModal';
 import { MatchResultModal } from './components/MatchResultModal';
 
 import { AuthView } from './views/AuthView';
@@ -31,9 +45,27 @@ import { ChessGame } from './games/ChessGame';
 import { TapRaceGame } from './games/TapRaceGame';
 
 import { StorageService } from './services/storage';
-import { UserProfile, Opponent, MatchRecord, GameType } from './types';
+import {
+  UserProfile,
+  Opponent,
+  MatchRecord,
+  GameType,
+  ChallengeInvite,
+  ChallengeStake,
+  ChallengeStatus,
+} from './types';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { Swords, Loader2, Mail, RefreshCw, Send, CheckCircle2 } from 'lucide-react';
+
+const VALID_STAKES = [200, 500, 1000, 2000] as const;
+
+function getCreatedAtMs(createdAt: any): number | null {
+  if (!createdAt) return null;
+  if (typeof createdAt.toMillis === 'function') return createdAt.toMillis();
+  if (typeof createdAt.seconds === 'number') return createdAt.seconds * 1000;
+  if (createdAt instanceof Date) return createdAt.getTime();
+  return null;
+}
 
 export default function App() {
   const isOnline = useOnlineStatus();
@@ -92,9 +124,35 @@ export default function App() {
 
   // Modal & Flow States
   const [showPWAInfo, setShowPWAInfo] = useState<boolean>(false);
-  const [challengeTarget, setChallengeTarget] = useState<{ opponent: Opponent; gameType: GameType } | null>(null);
+  const [challengeTarget, setChallengeTarget] = useState<{
+    opponent: Opponent;
+    gameType: GameType;
+    mode: 'local' | 'invite';
+  } | null>(null);
   const [activeGame, setActiveGame] = useState<{ opponent: Opponent; gameType: GameType; stake: number } | null>(null);
   const [completedMatchRecord, setCompletedMatchRecord] = useState<MatchRecord | null>(null);
+
+  // Duel Invitations State (Sender / Challenger)
+  const [isSubmittingInvite, setIsSubmittingInvite] = useState<boolean>(false);
+  const [inviteSubmitError, setInviteSubmitError] = useState<string>('');
+  const [outgoingInvite, setOutgoingInvite] = useState<ChallengeInvite | null>(null);
+  const [outgoingTimedOut, setOutgoingTimedOut] = useState<boolean>(false);
+  const [outgoingRemainingSeconds, setOutgoingRemainingSeconds] = useState<number>(90);
+  const [isCancellingInvite, setIsCancellingInvite] = useState<boolean>(false);
+  const [outgoingCancelError, setOutgoingCancelError] = useState<string>('');
+
+  // Duel Invitations State (Receiver / Invited player)
+  const [activeIncomingInvite, setActiveIncomingInvite] = useState<ChallengeInvite | null>(null);
+  const activeIncomingInviteRef = useRef<ChallengeInvite | null>(null);
+  const [isRespondingInvite, setIsRespondingInvite] = useState<boolean>(false);
+  const isRespondingInviteRef = useRef<boolean>(false);
+  const [incomingError, setIncomingError] = useState<string>('');
+  const [incomingAcceptedMsg, setIncomingAcceptedMsg] = useState<string | null>(null);
+  const [incomingClosedNotice, setIncomingClosedNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    activeIncomingInviteRef.current = activeIncomingInvite;
+  }, [activeIncomingInvite]);
 
   // 1. Listen for Firebase Auth changes
   useEffect(() => {
@@ -199,6 +257,273 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
+  // 4. Restore or clean up any leftover pending outgoing invitation on login
+  useEffect(() => {
+    if (!currentUser) {
+      setOutgoingInvite(null);
+      setActiveIncomingInvite(null);
+      setIncomingAcceptedMsg(null);
+      setIncomingClosedNotice(null);
+      return;
+    }
+
+    let isMounted = true;
+    const checkExistingOutgoing = async () => {
+      try {
+        const challengesRef = collection(db, 'challenges');
+        const q = query(
+          challengesRef,
+          where('fromUid', '==', currentUser.uid),
+          where('status', '==', 'pending')
+        );
+        const snap = await getDocs(q);
+        if (!isMounted || snap.empty) return;
+
+        const now = Date.now();
+        let activeDoc: ChallengeInvite | null = null;
+
+        for (const docSnap of snap.docs) {
+          const data = docSnap.data();
+          const createdAtMs = getCreatedAtMs(data.createdAt);
+          const ageMs = createdAtMs !== null ? now - createdAtMs : 0;
+
+          if (ageMs >= 90_000) {
+            // Cancel stale pending invitation
+            updateDoc(doc(db, 'challenges', docSnap.id), { status: 'cancelled' }).catch(() => {});
+          } else if (!activeDoc) {
+            activeDoc = {
+              id: docSnap.id,
+              fromUid: data.fromUid,
+              toUid: data.toUid,
+              fromPseudo: data.fromPseudo || 'Joueur',
+              toPseudo: data.toPseudo || 'Adversaire',
+              game: data.game === 'taprace' ? 'taprace' : 'chess',
+              stake: Number(data.stake) as ChallengeStake,
+              status: 'pending',
+              createdAt: data.createdAt,
+              createdAtMs: createdAtMs ?? now,
+            };
+          }
+        }
+
+        if (activeDoc && isMounted) {
+          const elapsedSec = Math.floor((now - (activeDoc.createdAtMs ?? now)) / 1000);
+          setOutgoingTimedOut(false);
+          setOutgoingRemainingSeconds(Math.max(1, 90 - elapsedSec));
+          setOutgoingInvite(activeDoc);
+        }
+      } catch (err) {
+        console.error('Erreur vérification invitation en cours:', err);
+      }
+    };
+
+    checkExistingOutgoing();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser]);
+
+  // 5. Real-time listener (onSnapshot) on the outgoing invitation document
+  useEffect(() => {
+    if (!currentUser || !outgoingInvite?.id) return;
+
+    const inviteDocRef = doc(db, 'challenges', outgoingInvite.id);
+    const unsubscribe = onSnapshot(
+      inviteDocRef,
+      (docSnap) => {
+        if (!docSnap.exists()) return;
+        const data = docSnap.data();
+        const nextStatus = data.status as ChallengeStatus;
+        setOutgoingInvite((prev) => {
+          if (!prev || prev.id !== docSnap.id) return prev;
+          if (prev.status === nextStatus) return prev;
+          return {
+            ...prev,
+            status: nextStatus,
+          };
+        });
+      },
+      (error) => {
+        console.error('Erreur écoute invitation envoyée:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser, outgoingInvite?.id]);
+
+  // 6. 90-second expiration timer for pending outgoing invitation
+  useEffect(() => {
+    if (!outgoingInvite || outgoingInvite.status !== 'pending') return;
+
+    const createdMs = outgoingInvite.createdAtMs ?? Date.now();
+    const expireAtMs = createdMs + 90_000;
+
+    const tick = () => {
+      const remainingMs = expireAtMs - Date.now();
+      if (remainingMs <= 0) {
+        setOutgoingRemainingSeconds(0);
+        setOutgoingTimedOut(true);
+        updateDoc(doc(db, 'challenges', outgoingInvite.id), {
+          status: 'cancelled',
+        }).catch(() => {
+          // Ignorer si l'adversaire vient juste de répondre
+        });
+        return true;
+      }
+      setOutgoingRemainingSeconds(Math.ceil(remainingMs / 1000));
+      return false;
+    };
+
+    if (tick()) return;
+
+    const interval = setInterval(() => {
+      if (tick()) {
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [outgoingInvite?.id, outgoingInvite?.status]);
+
+  // 7. Real-time listener (onSnapshot) for incoming pending invitations across the whole app
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const challengesRef = collection(db, 'challenges');
+    const q = query(
+      challengesRef,
+      where('toUid', '==', currentUser.uid),
+      where('status', '==', 'pending')
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const now = Date.now();
+        const validInvites: ChallengeInvite[] = [];
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const createdAtMs = getCreatedAtMs(data.createdAt);
+
+          // Ignore invitations older than 2 minutes (120,000 ms)
+          if (createdAtMs !== null && now - createdAtMs > 120_000) {
+            return;
+          }
+
+          validInvites.push({
+            id: docSnap.id,
+            fromUid: data.fromUid,
+            toUid: data.toUid,
+            fromPseudo: data.fromPseudo || 'Un joueur',
+            toPseudo: data.toPseudo || 'Vous',
+            game: data.game === 'taprace' ? 'taprace' : 'chess',
+            stake: Number(data.stake) as ChallengeStake,
+            status: 'pending',
+            createdAt: data.createdAt,
+            createdAtMs,
+          });
+        });
+
+        // Sort in JS by creation date descending (newest first, no orderBy index)
+        validInvites.sort((a, b) => (b.createdAtMs ?? now) - (a.createdAtMs ?? now));
+
+        // If multiple invitations come from the same player, keep only the most recent one
+        const seenSenders = new Set<string>();
+        const dedupedInvites: ChallengeInvite[] = [];
+        for (const inv of validInvites) {
+          if (!seenSenders.has(inv.fromUid)) {
+            seenSenders.add(inv.fromUid);
+            dedupedInvites.push(inv);
+          }
+        }
+
+        const prevOpen = activeIncomingInviteRef.current;
+        const stillPending = prevOpen
+          ? dedupedInvites.some((inv) => inv.id === prevOpen.id)
+          : false;
+
+        if (prevOpen && !stillPending && !isRespondingInviteRef.current) {
+          const closedId = prevOpen.id;
+          activeIncomingInviteRef.current = null;
+          setActiveIncomingInvite(dedupedInvites[0] || null);
+          setIncomingError('');
+          getDoc(doc(db, 'challenges', closedId))
+            .then((snap) => {
+              if (snap.exists() && snap.data().status === 'cancelled') {
+                setIncomingClosedNotice('Invitation annulée');
+              }
+            })
+            .catch(() => {});
+          return;
+        }
+
+        setActiveIncomingInvite((prev) => {
+          if (dedupedInvites.length === 0) {
+            return null;
+          }
+          // If the currently displayed sender sent a newer invite, show the newer one
+          if (prev) {
+            const updatedSameSender = dedupedInvites.find((inv) => inv.fromUid === prev.fromUid);
+            if (updatedSameSender) {
+              return updatedSameSender;
+            }
+          }
+          return dedupedInvites[0];
+        });
+      },
+      (error) => {
+        console.error('Erreur écoute invitations reçues:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // 8. Watch currently open incoming invitation so if sender cancels it, close modal with "Invitation annulée"
+  useEffect(() => {
+    if (!currentUser || !activeIncomingInvite?.id) return;
+
+    const currentInviteId = activeIncomingInvite.id;
+    const inviteDocRef = doc(db, 'challenges', currentInviteId);
+
+    const unsubscribe = onSnapshot(
+      inviteDocRef,
+      (docSnap) => {
+        if (!docSnap.exists()) return;
+        const data = docSnap.data();
+        if (data.status === 'cancelled' && !isRespondingInviteRef.current) {
+          activeIncomingInviteRef.current = null;
+          setActiveIncomingInvite(null);
+          setIncomingError('');
+          setIncomingClosedNotice('Invitation annulée');
+        } else if (
+          (data.status === 'accepted' || data.status === 'declined') &&
+          !isRespondingInviteRef.current
+        ) {
+          activeIncomingInviteRef.current = null;
+          setActiveIncomingInvite(null);
+          setIncomingError('');
+        }
+      },
+      () => {}
+    );
+
+    // Also auto-close if the open invitation passes the 2-minute threshold while open
+    const ageCheckInterval = setInterval(() => {
+      const createdAtMs = activeIncomingInvite.createdAtMs;
+      if (createdAtMs !== null && createdAtMs !== undefined && Date.now() - createdAtMs > 120_000) {
+        setActiveIncomingInvite(null);
+        setIncomingError('');
+      }
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(ageCheckInterval);
+    };
+  }, [currentUser, activeIncomingInvite?.id]);
+
   // Requirement 4: Resend verification email with 60s cooldown limit
   const handleResendVerificationEmail = async () => {
     if (!currentUser || resendCooldown > 0) return;
@@ -227,19 +552,91 @@ export default function App() {
     }
   };
 
-  // Challenge Flow Step 1: Open Confirmation Modal
-  const handleOpenChallenge = (opponent: Opponent, gameType: GameType) => {
-    setChallengeTarget({ opponent, gameType });
+  // Challenge Flow Step 1: Open Confirmation Modal (local game from Arena vs real invitation from Lobby)
+  const handleOpenChallenge = (
+    opponent: Opponent,
+    gameType: GameType,
+    mode: 'local' | 'invite' = 'local'
+  ) => {
+    if (mode === 'invite' && outgoingInvite?.status === 'pending') {
+      return;
+    }
+    setInviteSubmitError('');
+    setChallengeTarget({ opponent, gameType, mode });
   };
 
-  // Challenge Flow Step 2: Confirm challenge -> Block stake in Firestore -> Video verification disabled per prompt instructions
+  // Challenge Flow Step 2: Confirm either local match (Arena) or real duel invitation (Lobby)
   const handleConfirmChallenge = async (opponent: Opponent, gameType: GameType, stake: number) => {
+    if (!currentUser) return;
+
+    // Lobby real player invitation mode (NO local game, NO token debit/credit)
+    if (challengeTarget?.mode === 'invite') {
+      if (isSubmittingInvite) return;
+      if (outgoingInvite?.status === 'pending') {
+        setInviteSubmitError('Tu as déjà une invitation en attente de réponse.');
+        return;
+      }
+      if (userProfile.tokens < stake) {
+        setInviteSubmitError('Solde de jetons insuffisant pour cette mise.');
+        return;
+      }
+      if (opponent.id === currentUser.uid) {
+        setInviteSubmitError('Tu ne peux pas te défier toi-même.');
+        return;
+      }
+
+      const validStake = Number(stake);
+      if (!(VALID_STAKES as readonly number[]).includes(validStake)) {
+        setInviteSubmitError('Veuillez choisir une mise valide (200, 500, 1000 ou 2000).');
+        return;
+      }
+
+      const validGame: GameType = gameType === 'taprace' ? 'taprace' : 'chess';
+
+      setIsSubmittingInvite(true);
+      setInviteSubmitError('');
+
+      try {
+        const docRef = await addDoc(collection(db, 'challenges'), {
+          fromUid: currentUser.uid,
+          toUid: opponent.id,
+          fromPseudo: userProfile.username || 'Joueur',
+          toPseudo: opponent.name,
+          game: validGame,
+          stake: validStake,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+        });
+
+        setChallengeTarget(null);
+        setOutgoingTimedOut(false);
+        setOutgoingRemainingSeconds(90);
+        setOutgoingCancelError('');
+        setOutgoingInvite({
+          id: docRef.id,
+          fromUid: currentUser.uid,
+          toUid: opponent.id,
+          fromPseudo: userProfile.username || 'Joueur',
+          toPseudo: opponent.name,
+          game: validGame,
+          stake: validStake as ChallengeStake,
+          status: 'pending',
+          createdAtMs: Date.now(),
+        });
+      } catch (err) {
+        console.error('Erreur envoi invitation:', err);
+        setInviteSubmitError("Impossible d'envoyer l'invitation pour le moment. Réessaie dans un instant.");
+      } finally {
+        setIsSubmittingInvite(false);
+      }
+      return;
+    }
+
+    // Arena local match mode (unchanged)
     if (userProfile.tokens < stake) {
       alert('Solde de jetons insuffisant.');
       return;
     }
-
-    if (!currentUser) return;
 
     try {
       // Deduct stake in Firestore
@@ -249,14 +646,76 @@ export default function App() {
       });
 
       setChallengeTarget(null);
-
-      // Note: Video verification by camera is disabled per user request:
-      // "Désactive la vérification vidéo par caméra pour l'instant."
-      // We directly launch the match!
       setActiveGame({ opponent, gameType, stake });
     } catch (err) {
       console.error('Erreur lors du blocage de la mise dans Firestore:', err);
       alert('Impossible d’engager la mise. Vérifiez votre connexion.');
+    }
+  };
+
+  // Sender cancels pending outgoing invitation
+  const handleCancelOutgoingInvite = async () => {
+    if (!outgoingInvite || outgoingInvite.status !== 'pending' || isCancellingInvite) return;
+
+    setIsCancellingInvite(true);
+    setOutgoingCancelError('');
+
+    try {
+      await updateDoc(doc(db, 'challenges', outgoingInvite.id), {
+        status: 'cancelled',
+      });
+    } catch (err) {
+      console.error('Erreur annulation invitation:', err);
+      setOutgoingCancelError("Impossible d'annuler : le joueur vient peut-être déjà de répondre.");
+    } finally {
+      setIsCancellingInvite(false);
+    }
+  };
+
+  // Receiver accepts incoming invitation
+  const handleAcceptIncomingInvite = async (invite: ChallengeInvite) => {
+    if (isRespondingInvite) return;
+
+    setIsRespondingInvite(true);
+    isRespondingInviteRef.current = true;
+    setIncomingError('');
+
+    try {
+      await updateDoc(doc(db, 'challenges', invite.id), {
+        status: 'accepted',
+      });
+      setActiveIncomingInvite(null);
+      setIncomingAcceptedMsg('Défi accepté ! Le duel en ligne arrive bientôt.');
+    } catch (err) {
+      console.error('Erreur acceptation invitation:', err);
+      setActiveIncomingInvite(null);
+      setIncomingClosedNotice("Cette invitation n'est plus disponible (elle a déjà été annulée ou traitée).");
+    } finally {
+      setIsRespondingInvite(false);
+      isRespondingInviteRef.current = false;
+    }
+  };
+
+  // Receiver declines incoming invitation
+  const handleDeclineIncomingInvite = async (invite: ChallengeInvite) => {
+    if (isRespondingInvite) return;
+
+    setIsRespondingInvite(true);
+    isRespondingInviteRef.current = true;
+    setIncomingError('');
+
+    try {
+      await updateDoc(doc(db, 'challenges', invite.id), {
+        status: 'declined',
+      });
+      setActiveIncomingInvite(null);
+    } catch (err) {
+      console.error('Erreur refus invitation:', err);
+      setActiveIncomingInvite(null);
+      setIncomingClosedNotice("Cette invitation n'est plus disponible.");
+    } finally {
+      setIsRespondingInvite(false);
+      isRespondingInviteRef.current = false;
     }
   };
 
@@ -376,6 +835,11 @@ export default function App() {
   // Déconnexion
   const handleSignOut = async () => {
     try {
+      setOutgoingInvite(null);
+      setActiveIncomingInvite(null);
+      setIncomingAcceptedMsg(null);
+      setIncomingClosedNotice(null);
+      setChallengeTarget(null);
       await signOut(auth);
       setCurrentTab('arena');
     } catch (err) {
@@ -531,7 +995,7 @@ export default function App() {
               <ArenaView
                 userProfile={userProfile}
                 opponents={opponents}
-                onOpenChallenge={handleOpenChallenge}
+                onOpenChallenge={(opp, gameType) => handleOpenChallenge(opp, gameType, 'local')}
                 onGoToLobby={() => setCurrentTab('lobby')}
               />
             )}
@@ -539,7 +1003,8 @@ export default function App() {
             {currentTab === 'lobby' && (
               <LobbyView
                 currentUserId={currentUser.uid}
-                onOpenChallenge={handleOpenChallenge}
+                hasPendingInvite={outgoingInvite?.status === 'pending'}
+                onOpenChallenge={(opp, gameType) => handleOpenChallenge(opp, gameType, 'invite')}
               />
             )}
 
@@ -576,8 +1041,45 @@ export default function App() {
         opponent={challengeTarget?.opponent || null}
         initialGameType={challengeTarget?.gameType || 'chess'}
         userTokens={userProfile.tokens}
-        onCancel={() => setChallengeTarget(null)}
+        isInviteMode={challengeTarget?.mode === 'invite'}
+        isSubmitting={isSubmittingInvite}
+        errorMessage={inviteSubmitError}
+        onCancel={() => {
+          if (!isSubmittingInvite) {
+            setChallengeTarget(null);
+            setInviteSubmitError('');
+          }
+        }}
         onConfirm={handleConfirmChallenge}
+      />
+
+      <OutgoingInviteModal
+        invite={outgoingInvite}
+        timedOut={outgoingTimedOut}
+        remainingSeconds={outgoingRemainingSeconds}
+        isCancelling={isCancellingInvite}
+        errorMessage={outgoingCancelError}
+        onCancelInvite={handleCancelOutgoingInvite}
+        onClose={() => {
+          setOutgoingInvite(null);
+          setOutgoingTimedOut(false);
+          setOutgoingCancelError('');
+        }}
+      />
+
+      <IncomingInviteModal
+        invite={activeIncomingInvite}
+        acceptedMessage={incomingAcceptedMsg}
+        closedNotice={incomingClosedNotice}
+        isResponding={isRespondingInvite}
+        errorMessage={incomingError}
+        onAccept={handleAcceptIncomingInvite}
+        onDecline={handleDeclineIncomingInvite}
+        onDismissNotice={() => {
+          setIncomingAcceptedMsg(null);
+          setIncomingClosedNotice(null);
+          setIncomingError('');
+        }}
       />
 
       <MatchResultModal

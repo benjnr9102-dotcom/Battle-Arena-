@@ -6,10 +6,15 @@ import { Opponent, GameType, FirestoreUser } from '../types';
 
 interface LobbyViewProps {
   currentUserId: string;
+  hasPendingInvite?: boolean;
   onOpenChallenge: (opponent: Opponent, gameType: GameType) => void;
 }
 
-export const LobbyView: React.FC<LobbyViewProps> = ({ currentUserId, onOpenChallenge }) => {
+export const LobbyView: React.FC<LobbyViewProps> = ({
+  currentUserId,
+  hasPendingInvite = false,
+  onOpenChallenge,
+}) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [realPlayers, setRealPlayers] = useState<FirestoreUser[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -114,6 +119,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ currentUserId, onOpenChall
         )}
       </div>
 
+      {/* Pending invitation notice */}
+      {hasPendingInvite && (
+        <div className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-xs text-cyan-200 text-center">
+          Tu as déjà une invitation en attente de réponse.
+        </div>
+      )}
+
       {/* Player List */}
       <div className="space-y-3">
         {loading ? (
@@ -195,16 +207,20 @@ export const LobbyView: React.FC<LobbyViewProps> = ({ currentUserId, onOpenChall
                 {/* Dual Challenge Buttons: Échecs vs Tap Race */}
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
                   <button
+                    type="button"
+                    disabled={hasPendingInvite}
                     onClick={() => onOpenChallenge(opp, 'chess')}
-                    className="py-2 px-3 rounded-xl text-xs font-display font-bold text-white bg-slate-800 hover:bg-cyan-600 border border-slate-700 flex items-center justify-center gap-1.5 transition active:scale-95"
+                    className="py-2 px-3 rounded-xl text-xs font-display font-bold text-white bg-slate-800 hover:bg-cyan-600 border border-slate-700 flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-45 disabled:cursor-not-allowed"
                   >
                     <Swords className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Défier Échecs</span>
                   </button>
 
                   <button
+                    type="button"
+                    disabled={hasPendingInvite}
                     onClick={() => onOpenChallenge(opp, 'taprace')}
-                    className="py-2 px-3 rounded-xl text-xs font-display font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 shadow-md shadow-blue-900/30 flex items-center justify-center gap-1.5 transition active:scale-95"
+                    className="py-2 px-3 rounded-xl text-xs font-display font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 shadow-md shadow-blue-900/30 flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-45 disabled:cursor-not-allowed"
                   >
                     <Zap className="w-3.5 h-3.5 text-white" />
                     <span>Défier Tap Race</span>
