@@ -47,9 +47,9 @@ export const IncomingInviteModal: React.FC<IncomingInviteModalProps> = ({
           <button
             type="button"
             onClick={onDismissNotice}
-            className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 transition"
+            className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-white shadow-lg shadow-emerald-500/25 transition"
           >
-            OK
+            {acceptedMessage?.includes('Échecs') ? 'Lancer la partie' : 'OK'}
           </button>
         </div>
       </div>

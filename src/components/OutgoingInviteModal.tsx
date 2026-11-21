@@ -132,8 +132,15 @@ export const OutgoingInviteModal: React.FC<OutgoingInviteModalProps> = ({
           </div>
         )}
 
-        {/* Action Button */}
-        {isPending ? (
+        {isAccepted ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 text-white shadow-lg shadow-emerald-500/25 transition"
+          >
+            {invite.game === 'chess' ? 'Lancer la partie' : 'OK'}
+          </button>
+        ) : isPending ? (
           <button
             type="button"
             disabled={isCancelling}
@@ -155,7 +162,7 @@ export const OutgoingInviteModal: React.FC<OutgoingInviteModalProps> = ({
             onClick={onClose}
             className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/20 transition"
           >
-            {isAccepted ? 'OK' : 'Fermer'}
+            Fermer
           </button>
         )}
       </div>

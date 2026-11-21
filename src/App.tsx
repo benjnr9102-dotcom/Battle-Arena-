@@ -43,6 +43,7 @@ import { ProfileView } from './views/ProfileView';
 
 import { ChessGame } from './games/ChessGame';
 import { TapRaceGame } from './games/TapRaceGame';
+import { OnlineChessGame } from './games/OnlineChessGame';
 
 import { StorageService } from './services/storage';
 import {
@@ -149,6 +150,9 @@ export default function App() {
   const [incomingError, setIncomingError] = useState<string>('');
   const [incomingAcceptedMsg, setIncomingAcceptedMsg] = useState<string | null>(null);
   const [incomingClosedNotice, setIncomingClosedNotice] = useState<string | null>(null);
+
+  // Active Online Chess Match State
+  const [activeOnlineChessInvite, setActiveOnlineChessInvite] = useState<ChallengeInvite | null>(null);
 
   useEffect(() => {
     activeIncomingInviteRef.current = activeIncomingInvite;
@@ -337,6 +341,9 @@ export default function App() {
         setOutgoingInvite((prev) => {
           if (!prev || prev.id !== docSnap.id) return prev;
           if (prev.status === nextStatus) return prev;
+          if (nextStatus === 'accepted' && prev.game === 'chess') {
+            setActiveOnlineChessInvite(prev);
+          }
           return {
             ...prev,
             status: nextStatus,
@@ -498,7 +505,20 @@ export default function App() {
           setIncomingError('');
           setIncomingClosedNotice('Invitation annulée');
         } else if (
-          (data.status === 'accepted' || data.status === 'declined') &&
+          data.status === 'accepted' &&
+          !isRespondingInviteRef.current
+        ) {
+          const acceptedInv = activeIncomingInviteRef.current;
+          activeIncomingInviteRef.current = null;
+          setActiveIncomingInvite(null);
+          setIncomingError('');
+          if (acceptedInv && acceptedInv.game === 'chess') {
+            setActiveOnlineChessInvite(acceptedInv);
+          } else {
+            setIncomingAcceptedMsg('Défi accepté ! Le duel en ligne arrive bientôt.');
+          }
+        } else if (
+          data.status === 'declined' &&
           !isRespondingInviteRef.current
         ) {
           activeIncomingInviteRef.current = null;
@@ -685,7 +705,12 @@ export default function App() {
         status: 'accepted',
       });
       setActiveIncomingInvite(null);
-      setIncomingAcceptedMsg('Défi accepté ! Le duel en ligne arrive bientôt.');
+
+      if (invite.game === 'chess') {
+        setActiveOnlineChessInvite(invite);
+      } else {
+        setIncomingAcceptedMsg('Défi accepté ! Le duel en ligne arrive bientôt.');
+      }
     } catch (err) {
       console.error('Erreur acceptation invitation:', err);
       setActiveIncomingInvite(null);
@@ -965,7 +990,14 @@ export default function App() {
 
       {/* Main View Router */}
       <main className="flex-1 w-full max-w-md mx-auto">
-        {activeGame ? (
+        {activeOnlineChessInvite ? (
+          <OnlineChessGame
+            invite={activeOnlineChessInvite}
+            currentUserId={currentUser.uid}
+            currentUserPseudo={userProfile.username || 'Joueur'}
+            onQuitToLobby={() => setActiveOnlineChessInvite(null)}
+          />
+        ) : activeGame ? (
           activeGame.gameType === 'chess' ? (
             <ChessGame
               opponent={activeGame.opponent}
