@@ -1,10 +1,14 @@
 import React from 'react';
 import { Swords, Zap, Users, Shield, ArrowRight, Flame, Award, UserCheck } from 'lucide-react';
 import { Opponent, GameType, UserProfile } from '../types';
+import { ResumableMatchBanner } from '../components/ResumableMatchBanner';
 
 interface ArenaViewProps {
   userProfile: UserProfile;
   opponents: Opponent[];
+  resumableOpponentPseudo?: string | null;
+  onResumeMatch?: () => void;
+  onResignActiveMatch?: () => void;
   onOpenChallenge: (opponent: Opponent, gameType: GameType) => void;
   onGoToLobby: () => void;
 }
@@ -12,6 +16,9 @@ interface ArenaViewProps {
 export const ArenaView: React.FC<ArenaViewProps> = ({
   userProfile,
   opponents,
+  resumableOpponentPseudo,
+  onResumeMatch,
+  onResignActiveMatch,
   onOpenChallenge,
   onGoToLobby,
 }) => {
@@ -38,6 +45,14 @@ export const ArenaView: React.FC<ArenaViewProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto p-3.5 space-y-4 pb-24">
+      {resumableOpponentPseudo && onResumeMatch && onResignActiveMatch && (
+        <ResumableMatchBanner
+          opponentPseudo={resumableOpponentPseudo}
+          onResume={onResumeMatch}
+          onResign={onResignActiveMatch}
+        />
+      )}
+
       {/* Hero Banner: E-Sport Battle Arena */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#101b33] via-[#0c1322] to-[#090d16] border border-cyan-500/30 p-4 shadow-xl">
         {/* Glow ambient background */}

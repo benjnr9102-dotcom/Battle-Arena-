@@ -23,6 +23,7 @@ import {
   query,
   where,
   serverTimestamp,
+  deleteField,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
@@ -32,6 +33,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { ChallengeModal } from './components/ChallengeModal';
 import { OutgoingInviteModal } from './components/OutgoingInviteModal';
 import { IncomingInviteModal } from './components/IncomingInviteModal';
+import { ResignConfirmModal } from './components/ResignConfirmModal';
 import { MatchResultModal } from './components/MatchResultModal';
 
 import { AuthView } from './views/AuthView';
@@ -151,8 +153,15 @@ export default function App() {
   const [incomingAcceptedMsg, setIncomingAcceptedMsg] = useState<string | null>(null);
   const [incomingClosedNotice, setIncomingClosedNotice] = useState<string | null>(null);
 
-  // Active Online Chess Match State
+  // Active Online Chess Match & Resume State
   const [activeOnlineChessInvite, setActiveOnlineChessInvite] = useState<ChallengeInvite | null>(null);
+  const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  const [resumableMatch, setResumableMatch] = useState<ChallengeInvite | null>(null);
+  const [showBannerResignConfirm, setShowBannerResignConfirm] = useState<boolean>(false);
+  const [isBannerResigning, setIsBannerResigning] = useState<boolean>(false);
+  const [bannerResignError, setBannerResignError] = useState<string>('');
+
+  const hasActiveChessMatch = Boolean(activeOnlineChessInvite || resumableMatch || activeMatchId);
 
   useEffect(() => {
     activeIncomingInviteRef.current = activeIncomingInvite;
@@ -187,7 +196,13 @@ export default function App() {
 
   // 2. Real-time Firestore synchronization for currentUser document (users/{uid})
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setActiveMatchId(null);
+      setResumableMatch(null);
+      setActiveOnlineChessInvite(null);
+      setShowBannerResignConfirm(false);
+      return;
+    }
 
     const userDocRef = doc(db, 'users', currentUser.uid);
     const unsubscribe = onSnapshot(
@@ -211,15 +226,103 @@ export default function App() {
             totalTokensWon: data.totalTokensWon || 0,
             totalFeesPaid: data.totalFeesPaid || 0,
           });
+          const nextActiveMatchId =
+            typeof data.activeMatchId === 'string' && data.activeMatchId.trim()
+              ? data.activeMatchId.trim()
+              : null;
+          setActiveMatchId(nextActiveMatchId);
         }
       },
       (error) => {
-        console.error('Erreur écoute profil Firestore:', error);
+        console.error('Erreur écoute profil:', error);
       }
     );
 
     return () => unsubscribe();
   }, [currentUser]);
+
+  // 2b. Verify activeMatchId on startup / return to Lobby or Arena (getDoc + single-doc watch)
+  useEffect(() => {
+    if (!currentUser || !activeMatchId || activeOnlineChessInvite) {
+      if (!activeMatchId) {
+        setResumableMatch(null);
+      }
+      return;
+    }
+
+    let isMounted = true;
+    let unsubscribeMatch: (() => void) | null = null;
+    const matchRef = doc(db, 'matches', activeMatchId);
+
+    const clearInvalidActiveMatch = () => {
+      updateDoc(doc(db, 'users', currentUser.uid), {
+        activeMatchId: deleteField(),
+      }).catch(() => {});
+      if (isMounted) {
+        setResumableMatch(null);
+      }
+    };
+
+    const verifyAndWatch = async () => {
+      try {
+        const snap = await getDoc(matchRef);
+        if (!isMounted) return;
+
+        if (!snap.exists()) {
+          clearInvalidActiveMatch();
+          return;
+        }
+
+        const data = snap.data();
+        const isParticipant =
+          data.whiteUid === currentUser.uid || data.blackUid === currentUser.uid;
+
+        if (data.status !== 'active' || !isParticipant) {
+          clearInvalidActiveMatch();
+          return;
+        }
+
+        setResumableMatch({
+          id: snap.id,
+          fromUid: data.whiteUid,
+          toUid: data.blackUid,
+          fromPseudo: data.whitePseudo || 'Joueur Blanc',
+          toPseudo: data.blackPseudo || 'Joueur Noir',
+          game: 'chess',
+          stake: (Number(data.stake) || 1000) as ChallengeStake,
+          status: 'accepted',
+        });
+
+        // Watch single document so banner disappears immediately if opponent finishes/resigns
+        unsubscribeMatch = onSnapshot(
+          matchRef,
+          (liveSnap) => {
+            if (!isMounted) return;
+            if (!liveSnap.exists()) {
+              clearInvalidActiveMatch();
+              return;
+            }
+            const liveData = liveSnap.data();
+            if (liveData.status !== 'active') {
+              clearInvalidActiveMatch();
+            }
+          },
+          () => {
+            clearInvalidActiveMatch();
+          }
+        );
+      } catch (err) {
+        clearInvalidActiveMatch();
+      }
+    };
+
+    verifyAndWatch();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribeMatch) unsubscribeMatch();
+    };
+  }, [currentUser, activeMatchId, activeOnlineChessInvite]);
 
   // 3. Real-time Firestore synchronization for real registered players in Lobby & Arena
   useEffect(() => {
@@ -581,6 +684,9 @@ export default function App() {
     if (mode === 'invite' && outgoingInvite?.status === 'pending') {
       return;
     }
+    if (mode === 'invite' && gameType === 'chess' && hasActiveChessMatch) {
+      return;
+    }
     setInviteSubmitError('');
     setChallengeTarget({ opponent, gameType, mode });
   };
@@ -592,6 +698,10 @@ export default function App() {
     // Lobby real player invitation mode (NO local game, NO token debit/credit)
     if (challengeTarget?.mode === 'invite') {
       if (isSubmittingInvite) return;
+      if (gameType === 'chess' && hasActiveChessMatch) {
+        setInviteSubmitError("Termine ta partie en cours avant d'en lancer une autre.");
+        return;
+      }
       if (outgoingInvite?.status === 'pending') {
         setInviteSubmitError('Tu as déjà une invitation en attente de réponse.');
         return;
@@ -696,6 +806,11 @@ export default function App() {
   const handleAcceptIncomingInvite = async (invite: ChallengeInvite) => {
     if (isRespondingInvite) return;
 
+    if (invite.game === 'chess' && hasActiveChessMatch) {
+      setIncomingError("Termine ta partie en cours avant d'en lancer une autre.");
+      return;
+    }
+
     setIsRespondingInvite(true);
     isRespondingInviteRef.current = true;
     setIncomingError('');
@@ -718,6 +833,49 @@ export default function App() {
     } finally {
       setIsRespondingInvite(false);
       isRespondingInviteRef.current = false;
+    }
+  };
+
+  // Confirm resignation from the "Partie en cours" banner (Arena / Lobby)
+  const handleConfirmBannerResign = async () => {
+    if (!currentUser || !resumableMatch || isBannerResigning) return;
+
+    setIsBannerResigning(true);
+    setBannerResignError('');
+
+    const isWhite = currentUser.uid === resumableMatch.fromUid;
+    const winnerColor = isWhite ? 'black' : 'white';
+
+    try {
+      await updateDoc(doc(db, 'matches', resumableMatch.id), {
+        status: 'finished',
+        endReason: 'resign',
+        result: winnerColor,
+      });
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        activeMatchId: deleteField(),
+      }).catch(() => {});
+      setShowBannerResignConfirm(false);
+      setResumableMatch(null);
+      setActiveMatchId(null);
+    } catch (err) {
+      console.error('Erreur abandon depuis bandeau:', err);
+      try {
+        const snap = await getDoc(doc(db, 'matches', resumableMatch.id));
+        if (!snap.exists() || snap.data().status === 'finished') {
+          await updateDoc(doc(db, 'users', currentUser.uid), {
+            activeMatchId: deleteField(),
+          }).catch(() => {});
+          setShowBannerResignConfirm(false);
+          setResumableMatch(null);
+          setActiveMatchId(null);
+          setIncomingClosedNotice('La partie était déjà terminée.');
+          return;
+        }
+      } catch (e) {}
+      setBannerResignError("Impossible d'abandonner la partie pour le moment. Réessaie.");
+    } finally {
+      setIsBannerResigning(false);
     }
   };
 
@@ -865,6 +1023,10 @@ export default function App() {
       setIncomingAcceptedMsg(null);
       setIncomingClosedNotice(null);
       setChallengeTarget(null);
+      setActiveOnlineChessInvite(null);
+      setActiveMatchId(null);
+      setResumableMatch(null);
+      setShowBannerResignConfirm(false);
       await signOut(auth);
       setCurrentTab('arena');
     } catch (err) {
@@ -995,7 +1157,11 @@ export default function App() {
             invite={activeOnlineChessInvite}
             currentUserId={currentUser.uid}
             currentUserPseudo={userProfile.username || 'Joueur'}
-            onQuitToLobby={() => setActiveOnlineChessInvite(null)}
+            onQuitToLobby={() => {
+              setActiveOnlineChessInvite(null);
+              setOutgoingInvite(null);
+              setCurrentTab('lobby');
+            }}
           />
         ) : activeGame ? (
           activeGame.gameType === 'chess' ? (
@@ -1027,6 +1193,22 @@ export default function App() {
               <ArenaView
                 userProfile={userProfile}
                 opponents={opponents}
+                resumableOpponentPseudo={
+                  resumableMatch
+                    ? currentUser.uid === resumableMatch.fromUid
+                      ? resumableMatch.toPseudo
+                      : resumableMatch.fromPseudo
+                    : null
+                }
+                onResumeMatch={() => {
+                  if (resumableMatch) {
+                    setActiveOnlineChessInvite(resumableMatch);
+                  }
+                }}
+                onResignActiveMatch={() => {
+                  setBannerResignError('');
+                  setShowBannerResignConfirm(true);
+                }}
                 onOpenChallenge={(opp, gameType) => handleOpenChallenge(opp, gameType, 'local')}
                 onGoToLobby={() => setCurrentTab('lobby')}
               />
@@ -1036,6 +1218,23 @@ export default function App() {
               <LobbyView
                 currentUserId={currentUser.uid}
                 hasPendingInvite={outgoingInvite?.status === 'pending'}
+                hasActiveChessMatch={hasActiveChessMatch}
+                resumableOpponentPseudo={
+                  resumableMatch
+                    ? currentUser.uid === resumableMatch.fromUid
+                      ? resumableMatch.toPseudo
+                      : resumableMatch.fromPseudo
+                    : null
+                }
+                onResumeMatch={() => {
+                  if (resumableMatch) {
+                    setActiveOnlineChessInvite(resumableMatch);
+                  }
+                }}
+                onResignActiveMatch={() => {
+                  setBannerResignError('');
+                  setShowBannerResignConfirm(true);
+                }}
                 onOpenChallenge={(opp, gameType) => handleOpenChallenge(opp, gameType, 'invite')}
               />
             )}
@@ -1111,6 +1310,19 @@ export default function App() {
           setIncomingAcceptedMsg(null);
           setIncomingClosedNotice(null);
           setIncomingError('');
+        }}
+      />
+
+      <ResignConfirmModal
+        isOpen={showBannerResignConfirm}
+        isSubmitting={isBannerResigning}
+        errorMessage={bannerResignError}
+        onConfirmResign={handleConfirmBannerResign}
+        onContinuePlaying={() => {
+          if (!isBannerResigning) {
+            setShowBannerResignConfirm(false);
+            setBannerResignError('');
+          }
         }}
       />
 

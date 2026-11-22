@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chess, Square, Color } from 'chess.js';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '../firebase';
 import { ChallengeInvite } from '../types';
-import { AlertOctagon, Volume2, VolumeX, LogOut, Loader2, Check } from 'lucide-react';
+import { AlertOctagon, LogOut, Loader2, Check, Flag } from 'lucide-react';
+import { ResignConfirmModal } from '../components/ResignConfirmModal';
 
 interface OnlineChessGameProps {
   invite: ChallengeInvite;
@@ -130,8 +131,16 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
 
   const [gameStatus, setGameStatus] = useState<string>('active');
   const [gameResult, setGameResult] = useState<string | null>(null);
+  const [endReason, setEndReason] = useState<string | null>(null);
   const [turn, setTurn] = useState<Color>('w');
   const [moveCount, setMoveCount] = useState<number>(0);
+
+  const [showResignConfirm, setShowResignConfirm] = useState<boolean>(false);
+  const [isResigning, setIsResigning] = useState<boolean>(false);
+
+  const wroteActiveMatchRef = useRef<boolean>(false);
+  const clearedActiveMatchRef = useRef<boolean>(false);
+  const prevStatusRef = useRef<string>('active');
 
   const [whitePseudo, setWhitePseudo] = useState<string>(invite.fromPseudo.substring(0, 20));
   const [blackPseudo, setBlackPseudo] = useState<string>(invite.toPseudo.substring(0, 20));
@@ -139,6 +148,28 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
   const isWhite = currentUserId === invite.fromUid;
   const playerColor: Color = isWhite ? 'w' : 'b';
   const opponentPseudo = isWhite ? blackPseudo : whitePseudo;
+
+  const markActiveMatch = useCallback(() => {
+    if (wroteActiveMatchRef.current || clearedActiveMatchRef.current) return;
+    wroteActiveMatchRef.current = true;
+    updateDoc(doc(db, 'users', currentUserId), {
+      activeMatchId: invite.id,
+    }).catch((err) => {
+      console.error('Erreur sauvegarde partie en cours:', err);
+      wroteActiveMatchRef.current = false;
+    });
+  }, [currentUserId, invite.id]);
+
+  const clearActiveMatch = useCallback(() => {
+    if (clearedActiveMatchRef.current) return;
+    clearedActiveMatchRef.current = true;
+    updateDoc(doc(db, 'users', currentUserId), {
+      activeMatchId: deleteField(),
+    }).catch((err) => {
+      console.error('Erreur nettoyage partie en cours:', err);
+      clearedActiveMatchRef.current = false;
+    });
+  }, [currentUserId]);
 
   const soundEnabled = true;
   const playSound = useCallback((type: 'move' | 'capture' | 'check' | 'gameover') => {
@@ -187,15 +218,53 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
   // 1. Creation / Initialization of matches/{id} document
   useEffect(() => {
     let isMounted = true;
+    let blackFallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const matchRef = doc(db, 'matches', invite.id);
+
+    const applyMatchSnapshotData = (data: any) => {
+      if (data.whitePseudo) setWhitePseudo(data.whitePseudo);
+      if (data.blackPseudo) setBlackPseudo(data.blackPseudo);
+
+      const remoteFen = data.fen;
+      if (remoteFen && remoteFen !== chess.fen()) {
+        try {
+          chess.load(remoteFen);
+        } catch (e) {
+          console.error('Erreur chargement position:', e);
+        }
+      }
+
+      if (data.turn) setTurn(data.turn as Color);
+      if (typeof data.moveCount === 'number') setMoveCount(data.moveCount);
+      if (data.status) {
+        setGameStatus(data.status);
+        prevStatusRef.current = data.status;
+      }
+      if (data.result !== undefined) setGameResult(data.result);
+      setEndReason(data.endReason || null);
+
+      if (data.lastMove) {
+        const m = data.lastMove;
+        if (typeof m === 'string' && m.length >= 4) {
+          setLastMove({
+            from: m.substring(0, 2) as Square,
+            to: m.substring(2, 4) as Square,
+          });
+        }
+      }
+
+      if (data.status === 'active') {
+        markActiveMatch();
+      } else if (data.status === 'finished') {
+        clearActiveMatch();
+      }
+    };
 
     async function initMatch() {
       try {
         const docSnap = await getDoc(matchRef);
         if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.whitePseudo) setWhitePseudo(data.whitePseudo);
-          if (data.blackPseudo) setBlackPseudo(data.blackPseudo);
+          applyMatchSnapshotData(docSnap.data());
           if (isMounted) setIsReady(true);
           return;
         }
@@ -217,11 +286,12 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
             createdAt: serverTimestamp(),
           };
           await setDoc(matchRef, initialData);
+          markActiveMatch();
           if (isMounted) setIsReady(true);
         } else {
           // Black: wait 5 seconds, if not created by white, create it
           setLoadingText('Préparation de la partie...');
-          const timer = setTimeout(async () => {
+          blackFallbackTimer = setTimeout(async () => {
             if (!isMounted) return;
             try {
               const checkSnap = await getDoc(matchRef);
@@ -241,6 +311,9 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
                   createdAt: serverTimestamp(),
                 };
                 await setDoc(matchRef, initialData);
+                markActiveMatch();
+              } else {
+                applyMatchSnapshotData(checkSnap.data());
               }
               if (isMounted) setIsReady(true);
             } catch (err) {
@@ -248,11 +321,9 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
               if (isMounted) setIsReady(true);
             }
           }, 5000);
-
-          return () => clearTimeout(timer);
         }
       } catch (err) {
-        console.error('Erreur initialisation match en ligne:', err);
+        console.error('Erreur initialisation partie en ligne:', err);
         if (isMounted) setIsReady(true);
       }
     }
@@ -261,8 +332,20 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
 
     return () => {
       isMounted = false;
+      if (blackFallbackTimer) clearTimeout(blackFallbackTimer);
     };
-  }, [invite.id, isWhite, invite.fromUid, invite.toUid, invite.fromPseudo, invite.toPseudo, invite.stake]);
+  }, [
+    invite.id,
+    isWhite,
+    invite.fromUid,
+    invite.toUid,
+    invite.fromPseudo,
+    invite.toPseudo,
+    invite.stake,
+    chess,
+    markActiveMatch,
+    clearActiveMatch,
+  ]);
 
   // 2. Real-time onSnapshot listener on matches/{id}
   useEffect(() => {
@@ -283,14 +366,21 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
           try {
             chess.load(remoteFen);
           } catch (e) {
-            console.error('Erreur chargement FEN:', e);
+            console.error('Erreur chargement position:', e);
           }
         }
 
         if (data.turn) setTurn(data.turn as Color);
         if (typeof data.moveCount === 'number') setMoveCount(data.moveCount);
-        if (data.status) setGameStatus(data.status);
+        if (data.status) {
+          if (data.status === 'finished' && prevStatusRef.current !== 'finished') {
+            playSound('gameover');
+          }
+          prevStatusRef.current = data.status;
+          setGameStatus(data.status);
+        }
         if (data.result !== undefined) setGameResult(data.result);
+        setEndReason(data.endReason || null);
 
         if (data.lastMove) {
           const m = data.lastMove;
@@ -301,16 +391,75 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
             });
           }
         }
+
+        if (data.status === 'active') {
+          markActiveMatch();
+        } else if (data.status === 'finished') {
+          setShowResignConfirm(false);
+          clearActiveMatch();
+        }
       },
       (error) => {
-        console.error('Erreur écoute match en ligne:', error);
+        console.error('Erreur écoute partie en ligne:', error);
       }
     );
 
     return () => unsubscribe();
-  }, [isReady, invite.id, chess]);
+  }, [isReady, invite.id, chess, markActiveMatch, clearActiveMatch, playSound]);
 
-  const fen = chess.fen();
+  // 2b. Confirm Resignation handler (writes ONLY status, endReason, result)
+  const handleConfirmResign = async () => {
+    if (isResigning || gameStatus === 'finished') return;
+
+    setIsResigning(true);
+    setErrorMessage('');
+
+    const winnerColor = isWhite ? 'black' : 'white';
+
+    try {
+      await updateDoc(doc(db, 'matches', invite.id), {
+        status: 'finished',
+        endReason: 'resign',
+        result: winnerColor,
+      });
+      setShowResignConfirm(false);
+      clearActiveMatch();
+    } catch (resignErr) {
+      console.error('Erreur écriture abandon:', resignErr);
+      setShowResignConfirm(false);
+      try {
+        const snap = await getDoc(doc(db, 'matches', invite.id));
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.fen) {
+            try {
+              chess.load(d.fen);
+            } catch (e) {}
+          }
+          if (d.turn) setTurn(d.turn as Color);
+          if (typeof d.moveCount === 'number') setMoveCount(d.moveCount);
+          if (d.status) {
+            prevStatusRef.current = d.status;
+            setGameStatus(d.status);
+          }
+          if (d.result !== undefined) setGameResult(d.result);
+          setEndReason(d.endReason || null);
+          if (d.lastMove && typeof d.lastMove === 'string' && d.lastMove.length >= 4) {
+            setLastMove({
+              from: d.lastMove.substring(0, 2) as Square,
+              to: d.lastMove.substring(2, 4) as Square,
+            });
+          }
+          if (d.status === 'finished') {
+            clearActiveMatch();
+          }
+        }
+      } catch (e) {}
+      setErrorMessage("Impossible d'abandonner : la partie est déjà terminée.");
+    } finally {
+      setIsResigning(false);
+    }
+  };
 
   // 3. Handle Square Click & Move execution
   const handleSquareClick = async (square: Square) => {
@@ -452,14 +601,27 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onQuitToLobby}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 transition"
-        >
-          <LogOut className="w-3.5 h-3.5 text-red-400" />
-          <span>Quitter</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {gameStatus !== 'finished' && (
+            <button
+              type="button"
+              onClick={() => setShowResignConfirm(true)}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-200 bg-red-950/60 hover:bg-red-900/70 border border-red-800/60 flex items-center gap-1 transition"
+            >
+              <Flag className="w-3.5 h-3.5 text-red-400" />
+              <span>Abandonner</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onQuitToLobby}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1 transition"
+          >
+            <LogOut className="w-3.5 h-3.5 text-slate-400" />
+            <span>Quitter</span>
+          </button>
+        </div>
       </div>
 
       {/* Error message banner if write failed */}
@@ -555,6 +717,16 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
         )}
       </div>
 
+      {/* Resign Confirmation Modal */}
+      <ResignConfirmModal
+        isOpen={showResignConfirm}
+        isSubmitting={isResigning}
+        onConfirmResign={handleConfirmResign}
+        onContinuePlaying={() => {
+          if (!isResigning) setShowResignConfirm(false);
+        }}
+      />
+
       {/* Game Over Modal Popup */}
       {gameStatus === 'finished' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-150">
@@ -568,7 +740,11 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
             </h3>
 
             <p className="text-sm text-slate-200 mb-5 leading-relaxed">
-              {gameResult === 'draw'
+              {endReason === 'resign'
+                ? gameResult === (isWhite ? 'white' : 'black')
+                  ? `${opponentPseudo} a abandonné, tu gagnes !`
+                  : `Tu as abandonné, ${opponentPseudo} gagne`
+                : gameResult === 'draw'
                 ? 'Match nul !'
                 : gameResult === 'white'
                 ? `Échec et mat, ${whitePseudo} gagne !`
@@ -579,7 +755,10 @@ export const OnlineChessGame: React.FC<OnlineChessGameProps> = ({
 
             <button
               type="button"
-              onClick={onQuitToLobby}
+              onClick={() => {
+                clearActiveMatch();
+                onQuitToLobby();
+              }}
               className="w-full py-3 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-lg shadow-cyan-500/25 transition"
             >
               Retour au lobby

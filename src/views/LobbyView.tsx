@@ -1,23 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Search, Swords, Zap, Users, Loader2, Award } from 'lucide-react';
+import { Search, Swords, Zap, Users, Loader2, Award, AlertCircle } from 'lucide-react';
 import { Opponent, GameType, FirestoreUser } from '../types';
+import { ResumableMatchBanner } from '../components/ResumableMatchBanner';
 
 interface LobbyViewProps {
   currentUserId: string;
   hasPendingInvite?: boolean;
+  hasActiveChessMatch?: boolean;
+  resumableOpponentPseudo?: string | null;
+  onResumeMatch?: () => void;
+  onResignActiveMatch?: () => void;
   onOpenChallenge: (opponent: Opponent, gameType: GameType) => void;
 }
 
 export const LobbyView: React.FC<LobbyViewProps> = ({
   currentUserId,
   hasPendingInvite = false,
+  hasActiveChessMatch = false,
+  resumableOpponentPseudo,
+  onResumeMatch,
+  onResignActiveMatch,
   onOpenChallenge,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [realPlayers, setRealPlayers] = useState<FirestoreUser[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [chessBlockedNotice, setChessBlockedNotice] = useState<string>('');
 
   // Requirement 4: Afficher en temps réel (onSnapshot) la liste des vrais joueurs inscrits (pseudo + photo), sans les faux joueurs démo
   useEffect(() => {
@@ -81,8 +91,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     };
   };
 
+  useEffect(() => {
+    if (!hasActiveChessMatch) {
+      setChessBlockedNotice('');
+    }
+  }, [hasActiveChessMatch]);
+
   return (
     <div className="w-full max-w-md mx-auto p-3.5 space-y-3.5 pb-24">
+      {resumableOpponentPseudo && onResumeMatch && onResignActiveMatch && (
+        <ResumableMatchBanner
+          opponentPseudo={resumableOpponentPseudo}
+          onResume={onResumeMatch}
+          onResign={onResignActiveMatch}
+        />
+      )}
+
       {/* Header */}
       <div>
         <div className="flex items-center justify-between">
@@ -123,6 +147,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       {hasPendingInvite && (
         <div className="p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-xs text-cyan-200 text-center">
           Tu as déjà une invitation en attente de réponse.
+        </div>
+      )}
+
+      {/* Active chess match blocks new chess challenge */}
+      {chessBlockedNotice && (
+        <div className="p-2.5 rounded-xl bg-amber-950/70 border border-amber-500/50 text-xs text-amber-200 flex items-center justify-center gap-2 text-center">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{chessBlockedNotice}</span>
         </div>
       )}
 
@@ -209,7 +241,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <button
                     type="button"
                     disabled={hasPendingInvite}
-                    onClick={() => onOpenChallenge(opp, 'chess')}
+                    onClick={() => {
+                      if (hasActiveChessMatch) {
+                        setChessBlockedNotice("Termine ta partie en cours avant d'en lancer une autre.");
+                        return;
+                      }
+                      setChessBlockedNotice('');
+                      onOpenChallenge(opp, 'chess');
+                    }}
                     className="py-2 px-3 rounded-xl text-xs font-display font-bold text-white bg-slate-800 hover:bg-cyan-600 border border-slate-700 flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-45 disabled:cursor-not-allowed"
                   >
                     <Swords className="w-3.5 h-3.5 text-cyan-400" />
